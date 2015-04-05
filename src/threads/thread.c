@@ -198,7 +198,8 @@ thread_create (const char *name, int priority,
 
 #ifdef USERPROG
   if(is_thread(t))
-    list_push_front(&thread_current()->child_list, &t->child_elem );      
+    list_push_front(&thread_current()->child_list, &t->child_elem);
+
 #endif
   thread_unblock (t);
 
@@ -244,8 +245,6 @@ find_thread_by_tid(tid_t tid)
   return NULL;
 
 }
-
-
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
@@ -476,11 +475,15 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   
-  #ifdef USERPROG
+#ifdef USERPROG
   list_init(&t->child_list);
+  list_init(&t->file_list);
   t->alive = true;
   t->already_called = false;
-  #endif
+  t->load_success = false;
+  t->load_complete = false;
+  t->exit_status = -1;
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

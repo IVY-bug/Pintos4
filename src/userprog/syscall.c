@@ -8,21 +8,45 @@
 #include "filesys/file.h"
 #include "threads/init.h"
 #include "userprog/process.h"
+#include "threads/vaddr.h"
+#include "devices/input.h"
+#include "threads/malloc.h"
 
 static void syscall_handler (struct intr_frame *);
 
-/* structure for open() */
-static uint32_t file_des = 2;
+static uint32_t file_des = 3;
+
+struct lock file_lock;
+
 struct file_elem{
     int fd;
     struct file *file;
     struct list_elem elem;
 };
 
+static struct file *
+fd_to_file(int fd)
+{
+	struct list_elem *e;
+    struct file_elem *pfile_elem;
+    struct thread *curr = thread_current();
+    
+    for(e = list_begin(&curr->file_list);
+    	e != list_end(&curr->file_list); e = list_next(e))
+    {
+		pfile_elem = list_entry(e, struct file_elem, elem);
+
+		if(pfile_elem->fd == fd)
+	    	return pfile_elem->file;
+	}
+	return NULL;
+}
+    
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "sys call");
+  lock_init(&file_lock);
 }
 void
 user_halt(void)
@@ -33,16 +57,61 @@ void
 user_exit(int status)
 {
 	struct thread *curr = thread_current();
-	printf("%s: exit(%d)\n", curr->name, status);
+	struct list_elem *e;
+	struct file_elem *pfile_elem;
 	
- 	curr->exit_status = status;
+	for(e = list_begin(&curr->file_list);
+    	e != list_end(&curr->file_list); e = list_begin(&curr->file_list))
+	{
+		pfile_elem = list_entry(e, struct file_elem, elem);
+	    user_close(pfile_elem->fd);
+	}
+	printf("%s: exit(%d)\n", curr->name, status); 
+	
+ 	curr->exit_status = status; //for waiting parent
 	thread_exit();
 }
 
 pid_t
 user_exec(const char *file)
 {
-	return process_execute(file);
+
+	lock_acquire(&file_lock);
+
+	if(file == NULL)
+	{
+		lock_release(&file_lock);
+		return -1;
+	}
+	else
+	{
+		pid_t t = process_execute(file);
+		
+		struct thread *k = find_thread_by_tid(t);
+		if(k == NULL || t == TID_ERROR) 
+		{
+			lock_release(&file_lock);
+			return -1;
+		}
+		while(!k->load_complete)
+		{
+			k->waiting_parent = thread_current();
+			enum intr_level old_level = intr_disable();
+			thread_block();
+			intr_set_level(old_level);
+			k->waiting_parent = NULL;
+		}
+		if(k->load_success)
+		{
+			lock_release(&file_lock);
+			return t;
+		}
+		else
+		{
+			lock_release(&file_lock);
+			return -1;
+		}
+	}
 }
 
 int
@@ -54,83 +123,192 @@ user_wait(pid_t pid)
 bool
 user_create(const char *file, unsigned size)
 {
+	lock_acquire(&file_lock);
+	
 	if(file == NULL)
+	{
+		lock_release(&file_lock);
 		user_exit(-1);
+	}
 	else
+	{
+		lock_release(&file_lock);
 		return filesys_create(file, size);
+	}
 }
 bool
 user_remove(const char *file)
 {
+	lock_acquire(&file_lock);
+	
 	if(file == NULL)
+	{
+		lock_release(&file_lock);
 		user_exit(-1);
+	}
 	else
+	{
+		lock_release(&file_lock);
 		return filesys_remove(file);
+	}
 }
 int
 user_open(const char *file)
 {
+	lock_acquire(&file_lock);
+	
 	if(file == NULL)
 		user_exit(-1);
 	else
 	{
 		struct file *pfile;
-		//struct file_elem *pfile_elem;
+		struct file_elem *pfile_elem = 
+		(struct file_elem *) malloc(sizeof(struct file_elem));
 
 		pfile = filesys_open(file);
 		if(pfile == NULL)
+		{
+			lock_release(&file_lock);
 			return -1;
-		//pfile_elem->file = pfile;
-		//pfile_elem->fd = file_des++;
-		return 2;
+		}
+		pfile_elem->file = pfile;
+		pfile_elem->fd = file_des++;
+		list_push_back(&thread_current()->file_list, &pfile_elem->elem);
+		lock_release(&file_lock);
+		return pfile_elem->fd;
 	}
 }
 int
 user_filesize(int fd)
 {
-	return -1;
+	lock_acquire(&file_lock);
+	
+	struct file *f = fd_to_file(fd);
+	if(f == NULL)
+	{
+		lock_release(&file_lock);
+		return -1;
+	}
+	lock_release(&file_lock);
+	return file_length(f);
 }
+
 int
 user_read(int fd, void *buffer, unsigned size)
 {
-	return -1;
+	lock_acquire(&file_lock);
+	
+	if (fd == 0)
+	{
+		unsigned i;
+		for(i = 1; i < size; i++)
+		{
+			*(uint8_t *)(buffer + i) = input_getc();
+		}
+		lock_release(&file_lock);
+		return size;
+	}
+	else if(fd == 1 || fd < 0)
+	{
+		lock_release(&file_lock);
+		return -1;
+	}
+	else
+	{
+		struct file *k = fd_to_file(fd);
+		if(k == NULL)
+		{
+			lock_release(&file_lock);
+			return -1;
+		}
+		lock_release(&file_lock);
+		return file_read(k, buffer, size);
+	}
 }
 
 int
 user_write (int fd, const void *buffer, unsigned size)
 {
-	int written;
-
+	lock_acquire(&file_lock);
+	
+	if(size<= 0)
+	{
+		lock_release(&file_lock);
+		return 0;
+	}
 	if(fd <= 0 || fd == 2)
 	{
+		lock_release(&file_lock);
 		return -1;
 	}
 	else if(fd == 1)
 	{
 		putbuf((const char *) buffer, size);
+		lock_release(&file_lock);
 		return size;
 	}
 	else
 	{
-		written = file_write(fd, buffer, size);
-		return written;
+		struct file *file = fd_to_file(fd);
+		if(file == NULL)
+		{
+			lock_release(&file_lock);
+			return -1;
+		}
+		lock_release(&file_lock);
+		return file_write(file, buffer, size);
 	}
 }
 void
 user_seek(int fd, unsigned position)
 {
+	lock_acquire(&file_lock);
+	
+	struct file *f = fd_to_file(fd);
+	if(fd>2) 
+		file_seek(f,position);
+		lock_release(&file_lock);
+
 }
 
 unsigned
 user_tell(int fd)
 {
-	return 0;
+	lock_acquire(&file_lock);
+	
+	struct file *f = fd_to_file(fd);
+	if(fd<2)
+		return file_tell(f);
+	else
+	{
+		lock_release(&file_lock);
+		return -1;
+	}
 }
 
 void
 user_close(int fd)
 {
+	lock_acquire(&file_lock);
+	
+	struct list_elem *e;
+    struct file_elem *pfile_elem;
+    struct thread *curr = thread_current();
+    
+    for(e = list_begin(&curr->file_list);
+    	e != list_end(&curr->file_list); e = list_next(e))
+    {
+		pfile_elem = list_entry(e, struct file_elem, elem);
 
+		if(pfile_elem->fd == fd)
+		{
+			file_close(pfile_elem->file);
+			list_remove(&pfile_elem->elem);
+			free(pfile_elem);
+			break;	    	
+		}
+	}
+	lock_release(&file_lock);
 }
 
 
@@ -140,12 +318,10 @@ syscall_handler (struct intr_frame *f UNUSED)
 	//printf ("system call!\n");
   	uint32_t syscall_number = *(uintptr_t *)(f->esp);
   	//printf("syscall_number:%d\n", syscall_number);
+
+  	if((uintptr_t)(f->esp + 4) >= 0xc0000000 || f->esp == NULL)
+		user_exit(-1);
   	
-  	//hex_dump(f->esp, f->esp, 256, true);
-  	
-  	if((f->esp + 4) >= 0xc0000000 || f->esp == NULL)
-	   	user_exit(-1);
-	
 
   	switch (syscall_number)
   	{
@@ -171,7 +347,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   		break;
 
   		case SYS_REMOVE : 
-  			f->eax = user_exec(*(const char **)(f->esp + 4));
+  			f->eax = user_remove(*(const char **)(f->esp + 4));
   		break;
 
 		case SYS_OPEN : 
@@ -179,12 +355,12 @@ syscall_handler (struct intr_frame *f UNUSED)
   		break;
 	
 		case SYS_FILESIZE : 
-  			f->eax = user_filesize(user_open(*(uintptr_t *)(f->esp + 4)));
+  			f->eax = user_filesize(*(uintptr_t *)(f->esp + 4));
   		break;  
 
   		case SYS_READ : 
   			f->eax = user_read(*(uintptr_t *)(f->esp + 4),
-	    						*(const char **)(f->esp + 8),
+	    						*(char **)(f->esp + 8),
 	    						*(uintptr_t *)(f->esp + 12));
   		break;
 

@@ -92,18 +92,20 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct list child_list;
-    struct semaphore *psema;
-    struct semaphore mysema;
+    struct list child_list; // for find_thread_by_tid()
     struct list_elem child_elem;
-    bool alive;
-    struct thread *waiting_parent;
-    bool already_called;
+    bool alive; // for wait
+    struct thread *waiting_parent; // for exec
+    bool already_called; // for wait
+    bool load_complete; // for exec
+    struct list file_list; //for write, read, etc.
+    bool load_success; // for exec
+    struct file *deny; // for rox
+    int exit_status; // for exit
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    int exit_status;
 #endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
@@ -124,6 +126,7 @@ typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
+struct thread * find_thread_by_tid(tid_t tid);
 void thread_unblock (struct thread *);
 
 struct thread *thread_current (void);

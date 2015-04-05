@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp, char *tokens[]);
@@ -29,7 +30,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp, char *to
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy, *fn_copy1;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -38,18 +39,18 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  fn_copy1 = palloc_get_page (0);
+  if (fn_copy1 == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy1, file_name, PGSIZE);
 
   /* tokenizing file name. */
-  char *s = file_name;
+  char *s = fn_copy;
   char *token, *save_ptr;
-
-  char *tokens[100];
-  int index = 0;
-
   char *new_file_name = token = strtok_r(s, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (new_file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (new_file_name, PRI_DEFAULT, start_process, fn_copy1);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
   return tid;
@@ -62,7 +63,7 @@ start_process (void *f_name)
   char *file_name = f_name;
   struct intr_frame if_;
   bool success;
-
+  struct file *file;
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -84,14 +85,29 @@ start_process (void *f_name)
 
   char *new_file_name = tokens[0];
   
+  thread_current()->load_complete = false;
+
   success = load (new_file_name, &if_.eip, &if_.esp, tokens);
 
-  //hex_dump(if_.esp, if_.esp, 256, true);
-  
+  if(success)
+  {
+    file = filesys_open(new_file_name);
+    thread_current()->deny = file;
+    file_deny_write(file);
+  }
+  thread_current()->load_success = success;
+  thread_current()->load_complete = true;
+
+  if(thread_current()->waiting_parent != NULL)
+  {
+    thread_unblock(thread_current()->waiting_parent);
+    thread_yield();
+  }
+
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
-    thread_exit ();
+    thread_exit();
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -114,9 +130,7 @@ start_process (void *f_name)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  struct list_elem *e;
-  struct thread *curr = thread_current();
-  struct thread *child =  find_thread_by_tid(child_tid);
+  struct thread *child = find_thread_by_tid(child_tid);
   
   if(child == NULL || child->already_called) return -1;
 
@@ -142,6 +156,11 @@ process_exit (void)
   struct thread *curr = thread_current ();
   uint32_t *pd;
   
+  if(curr->deny != NULL)
+  {
+    file_allow_write(curr->deny);
+    curr->deny = NULL;
+  }
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = curr->pagedir;
@@ -507,7 +526,7 @@ setup_stack (void **esp, char *tokens[])
 
         // add token's address
         int k;
-        uintptr_t tok_addr = PHYS_BASE;
+        uintptr_t tok_addr = (uintptr_t) PHYS_BASE;
         for(k = 0; k < token_num; k++)
         {
           *esp -= 4;
@@ -516,12 +535,11 @@ setup_stack (void **esp, char *tokens[])
         }
 
         *esp -= 4;
-        *(uintptr_t *)(* esp) = *esp + 4;
+        *(uintptr_t *)(* esp) = (uintptr_t)*esp + 4;
         *esp -= 4;
         *(uintptr_t *)(* esp) = token_num;
         *esp -= 4;
         *(uintptr_t *)(* esp) = 0; //return address
-
       }
       else
         palloc_free_page (kpage);
