@@ -198,8 +198,7 @@ thread_create (const char *name, int priority,
 
 #ifdef USERPROG
   if(is_thread(t))
-    list_push_front(&thread_current()->child_list, &t->child_elem);
-
+    list_push_back(&thread_current()->child_list, &t->child_elem);
 #endif
   thread_unblock (t);
 
@@ -313,7 +312,8 @@ thread_exit (void)
   if(thread_current()->waiting_parent != NULL)
   {
     thread_current()->alive = false;
-    thread_unblock(thread_current()->waiting_parent);
+    if((thread_current()->waiting_parent)->status == THREAD_BLOCKED)
+        thread_unblock(thread_current()->waiting_parent);
     thread_yield();
   }
 #endif
@@ -475,6 +475,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   
+  /* Project 2 */
 #ifdef USERPROG
   list_init(&t->child_list);
   list_init(&t->file_list);

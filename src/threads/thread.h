@@ -92,16 +92,19 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct list child_list; // for find_thread_by_tid()
+
+    /* Project 2 */
+    struct list child_list;             // find_thread_by_tid()
     struct list_elem child_elem;
-    bool alive; // for wait
-    struct thread *waiting_parent; // for exec
-    bool already_called; // for wait
-    bool load_complete; // for exec
-    struct list file_list; //for write, read, etc.
-    bool load_success; // for exec
-    struct file *deny; // for rox
-    int exit_status; // for exit
+    struct thread *waiting_parent;      // for wait
+    struct thread *load_parent;         // for exec
+    bool load_complete;                 // for exec
+    bool load_success;                  // for exec
+    bool alive;                         // for wait
+    bool already_called;                // for wait
+    struct list file_list;              // for write, read, etc.
+    struct file *deny;                  // for rox
+    int exit_status;                    // for exit
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

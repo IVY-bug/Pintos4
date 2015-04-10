@@ -52,7 +52,8 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (new_file_name, PRI_DEFAULT, start_process, fn_copy1);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy);
+    palloc_free_page (fn_copy1);
+  palloc_free_page (fn_copy);
   return tid;
 }
 /* A thread function that loads a user process and makes it start
@@ -83,27 +84,35 @@ start_process (void *f_name)
       tokens[index++] = token;
   }
 
-  char *new_file_name = tokens[0];
-  
-  thread_current()->load_complete = false;
+  success = load (tokens[0], &if_.eip, &if_.esp, tokens);
 
-  success = load (new_file_name, &if_.eip, &if_.esp, tokens);
-
+  /* for rox */
   if(success)
   {
-    file = filesys_open(new_file_name);
+    file = filesys_open(tokens[0]);
     thread_current()->deny = file;
     file_deny_write(file);
   }
+
   thread_current()->load_success = success;
   thread_current()->load_complete = true;
 
-  if(thread_current()->waiting_parent != NULL)
+  while(thread_current()->load_parent != NULL)
   {
-    thread_unblock(thread_current()->waiting_parent);
+    if (thread_current()->already_called)
+      break;
+    if((thread_current()->load_parent)->status == THREAD_BLOCKED)
+      thread_unblock(thread_current()->load_parent);
     thread_yield();
   }
+  
+  thread_current()->load_parent = NULL;
 
+  if((thread_current()->waiting_parent) != NULL)
+  {
+    if((thread_current()->waiting_parent)->status == THREAD_BLOCKED)
+        thread_unblock(thread_current()->waiting_parent);
+  }
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
@@ -145,7 +154,6 @@ process_wait (tid_t child_tid UNUSED)
   }
 
   list_remove(&child->child_elem);
-  
   return child->exit_status;
 }
 
@@ -502,7 +510,7 @@ setup_stack (void **esp, char *tokens[])
       {
         *esp = PHYS_BASE;
 
-        /* argument passing */
+        /* argument passing start */
         int token_num = 0;
         while(tokens[token_num] != NULL)
           token_num++;

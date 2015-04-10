@@ -16,9 +16,8 @@ static void syscall_handler (struct intr_frame *);
 
 static uint32_t file_des = 3;
 
-struct lock file_lock;
-
-struct file_elem{
+struct file_elem
+{
     int fd;
     struct file *file;
     struct list_elem elem;
@@ -45,8 +44,7 @@ fd_to_file(int fd)
 void
 syscall_init (void) 
 {
-  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "sys call");
-  lock_init(&file_lock);
+  	intr_register_int (0x30, 3, INTR_ON, syscall_handler, "sys call");
 }
 void
 user_halt(void)
@@ -75,12 +73,8 @@ user_exit(int status)
 pid_t
 user_exec(const char *file)
 {
-
-	lock_acquire(&file_lock);
-
 	if(file == NULL)
 	{
-		lock_release(&file_lock);
 		return -1;
 	}
 	else
@@ -88,27 +82,24 @@ user_exec(const char *file)
 		pid_t t = process_execute(file);
 		
 		struct thread *k = find_thread_by_tid(t);
-		if(k == NULL || t == TID_ERROR) 
+		if(k == NULL) 
 		{
-			lock_release(&file_lock);
 			return -1;
 		}
 		while(!k->load_complete)
 		{
-			k->waiting_parent = thread_current();
+			k->load_parent = thread_current();
 			enum intr_level old_level = intr_disable();
 			thread_block();
 			intr_set_level(old_level);
-			k->waiting_parent = NULL;
+			//k->load_parent = NULL;
 		}
 		if(k->load_success)
 		{
-			lock_release(&file_lock);
 			return t;
 		}
 		else
 		{
-			lock_release(&file_lock);
 			return -1;
 		}
 	}
@@ -123,42 +114,39 @@ user_wait(pid_t pid)
 bool
 user_create(const char *file, unsigned size)
 {
-	lock_acquire(&file_lock);
 	
 	if(file == NULL)
 	{
-		lock_release(&file_lock);
 		user_exit(-1);
 	}
 	else
 	{
-		lock_release(&file_lock);
-		return filesys_create(file, size);
+		bool temp = filesys_create(file, size);
+		return temp;
 	}
 }
 bool
 user_remove(const char *file)
 {
-	lock_acquire(&file_lock);
 	
 	if(file == NULL)
 	{
-		lock_release(&file_lock);
-		user_exit(-1);
+		return false;
 	}
 	else
 	{
-		lock_release(&file_lock);
-		return filesys_remove(file);
+		bool temp = filesys_remove(file);
+		return temp;
 	}
 }
 int
 user_open(const char *file)
 {
-	lock_acquire(&file_lock);
 	
 	if(file == NULL)
-		user_exit(-1);
+	{
+		return -1;;
+	}
 	else
 	{
 		struct file *pfile;
@@ -168,36 +156,32 @@ user_open(const char *file)
 		pfile = filesys_open(file);
 		if(pfile == NULL)
 		{
-			lock_release(&file_lock);
 			return -1;
 		}
 		pfile_elem->file = pfile;
 		pfile_elem->fd = file_des++;
 		list_push_back(&thread_current()->file_list, &pfile_elem->elem);
-		lock_release(&file_lock);
+		
 		return pfile_elem->fd;
 	}
 }
 int
 user_filesize(int fd)
 {
-	lock_acquire(&file_lock);
 	
 	struct file *f = fd_to_file(fd);
 	if(f == NULL)
 	{
-		lock_release(&file_lock);
 		return -1;
 	}
-	lock_release(&file_lock);
-	return file_length(f);
+	int temp = file_length(f);
+	return temp;
 }
 
 int
 user_read(int fd, void *buffer, unsigned size)
 {
-	lock_acquire(&file_lock);
-	
+
 	if (fd == 0)
 	{
 		unsigned i;
@@ -205,12 +189,10 @@ user_read(int fd, void *buffer, unsigned size)
 		{
 			*(uint8_t *)(buffer + i) = input_getc();
 		}
-		lock_release(&file_lock);
 		return size;
 	}
 	else if(fd == 1 || fd < 0)
 	{
-		lock_release(&file_lock);
 		return -1;
 	}
 	else
@@ -218,33 +200,28 @@ user_read(int fd, void *buffer, unsigned size)
 		struct file *k = fd_to_file(fd);
 		if(k == NULL)
 		{
-			lock_release(&file_lock);
 			return -1;
 		}
-		lock_release(&file_lock);
-		return file_read(k, buffer, size);
+		int temp = file_read(k, buffer, size);
+		return temp;
 	}
 }
 
 int
 user_write (int fd, const void *buffer, unsigned size)
 {
-	lock_acquire(&file_lock);
 	
 	if(size<= 0)
 	{
-		lock_release(&file_lock);
 		return 0;
 	}
 	if(fd <= 0 || fd == 2)
 	{
-		lock_release(&file_lock);
 		return -1;
 	}
 	else if(fd == 1)
 	{
 		putbuf((const char *) buffer, size);
-		lock_release(&file_lock);
 		return size;
 	}
 	else
@@ -252,45 +229,42 @@ user_write (int fd, const void *buffer, unsigned size)
 		struct file *file = fd_to_file(fd);
 		if(file == NULL)
 		{
-			lock_release(&file_lock);
 			return -1;
 		}
-		lock_release(&file_lock);
-		return file_write(file, buffer, size);
+		int temp = file_write(file, buffer, size);
+		return temp;
 	}
 }
 void
 user_seek(int fd, unsigned position)
 {
-	lock_acquire(&file_lock);
 	
 	struct file *f = fd_to_file(fd);
-	if(fd>2) 
-		file_seek(f,position);
-		lock_release(&file_lock);
-
+	if(f != NULL)
+	{
+		file_seek(f, position);
+	}
 }
 
 unsigned
 user_tell(int fd)
 {
-	lock_acquire(&file_lock);
 	
 	struct file *f = fd_to_file(fd);
-	if(fd<2)
-		return file_tell(f);
+	if(f != NULL)
+	{
+		unsigned temp = file_tell(f);
+		return temp;
+	}
 	else
 	{
-		lock_release(&file_lock);
 		return -1;
 	}
 }
 
 void
 user_close(int fd)
-{
-	lock_acquire(&file_lock);
-	
+{	
 	struct list_elem *e;
     struct file_elem *pfile_elem;
     struct thread *curr = thread_current();
@@ -308,7 +282,6 @@ user_close(int fd)
 			break;	    	
 		}
 	}
-	lock_release(&file_lock);
 }
 
 
@@ -372,7 +345,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 
 	    case SYS_SEEK : 
   			user_seek(*(uintptr_t *)(f->esp + 4),
-  						*(unsigned *)(f->esp + 4)) ;
+  						*(unsigned *)(f->esp + 8)) ;
   		break;
 
 		case SYS_TELL : 
