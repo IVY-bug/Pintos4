@@ -1,25 +1,33 @@
-Copying tests/filesys/base/lg-random into /tmp/SAVQZdGcLf.dsk...
-Writing command line to /tmp/kMZoRWJ6UY.dsk...
-qemu -hda /tmp/kMZoRWJ6UY.dsk -hdb /tmp/7ysmBNcC0K.dsk -hdc /tmp/SAVQZdGcLf.dsk -m 4 -net none -nographic -monitor null
+Copying tests/filesys/base/lg-random into /tmp/EuP77HR30Q.dsk...
+Writing command line to /tmp/SQThcdPxWW.dsk...
+qemu -hda /tmp/SQThcdPxWW.dsk -hdb /tmp/n0XAG5H3cv.dsk -hdc /tmp/EuP77HR30Q.dsk -m 4 -net none -nographic -monitor null
 Kernel command line: -q -f put lg-random run lg-random
 Pintos booting with 4,096 kB RAM...
-375 pages available in kernel pool.
+374 pages available in kernel pool.
 374 pages available in user pool.
 Calibrating timer...  78,540,800 loops/s.
-hd0:0: detected 129 sector (64 kB) disk, model "QEMU HARDDISK", serial "QM00001"
+hd0:0: detected 137 sector (68 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 4,032 sector (1 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 78 sector (39 kB) disk, model "QEMU HARDDISK", serial "QM00003"
 Formatting file system...done.
 Boot complete.
 Putting 'lg-random' into the file system...
 Executing 'lg-random':
+(lg-random) begin
+(lg-random) create "bazzle"
+(lg-random) open "bazzle"
+(lg-random) write "bazzle" in random order
+(lg-random) read "bazzle" in random order
+(lg-random) close "bazzle"
+(lg-random) end
+lg-random: exit(0)
 Execution of 'lg-random' complete.
-Timer: 61 ticks
-Thread: 0 idle ticks, 61 kernel ticks, 0 user ticks
+Timer: 79 ticks
+Thread: 30 idle ticks, 31 kernel ticks, 18 user ticks
 hd0:0: 0 reads, 0 writes
-hd0:1: 30 reads, 164 writes
+hd0:1: 240 reads, 468 writes
 hd1:0: 78 reads, 0 writes
-Console: 741 characters output
+Console: 963 characters output
 Keyboard: 0 keys pressed
-Exception: 1 page faults
+Exception: 0 page faults
 Powering off...

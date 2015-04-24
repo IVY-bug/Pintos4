@@ -93,6 +93,14 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    /* Project 1 */
+    int wake_up_time; // time to wake up
+    
+    int old_priority;
+    struct list holding_locks;
+    int64_t donate_counter;
+    struct lock *wanting_lock; //for nested dontion
+
     /* Project 2 */
     struct list child_list;             // find_thread_by_tid()
     struct list_elem child_elem;

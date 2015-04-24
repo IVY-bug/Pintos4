@@ -7,7 +7,8 @@
 #include "threads/io.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+#include <list.h>
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -19,6 +20,10 @@
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
+
+/* List of processes in THREAD_BLOCKED state, that is, processes
+   that are blocked */
+static struct list blocked_list;
 
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
@@ -44,6 +49,7 @@ timer_init (void)
   outb (0x40, count >> 8);
 
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init (&blocked_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -92,15 +98,36 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+static bool
+less_tick (const struct list_elem *a, const struct list_elem *b, 
+               void *aux UNUSED) 
+{
+  const struct thread *t1 = list_entry(a, struct thread, elem);
+  const struct thread *t2 = list_entry(b, struct thread, elem);
+  
+  if (t1->wake_up_time <= t2->wake_up_time)
+    return true;
+  else
+    return false;  
+}
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
-
+  enum intr_level old_level;
+  
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  /*while (timer_elapsed (start) < ticks)
+    thread_yield ();*/
+  
+  old_level = intr_disable ();
+  struct thread *t = thread_current();
+  t->wake_up_time = start + ticks;
+ 
+  list_insert_ordered(&blocked_list, &t->elem, less_tick, NULL);
+  thread_block();
+  intr_set_level (old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -131,11 +158,32 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
+
+static void
+time_up(void)
+{
+    struct thread *t;
+    
+    while(!list_empty(&blocked_list))
+    {
+      t = list_entry(list_front(&blocked_list), struct thread, elem);
+     
+      if (t->wake_up_time <= ticks)
+      {
+        list_pop_front(&blocked_list);
+        thread_unblock(t);
+      }
+      else
+        break;
+    }
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  time_up();
   thread_tick ();
 }
 
