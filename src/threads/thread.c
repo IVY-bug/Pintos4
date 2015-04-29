@@ -512,6 +512,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->load_complete = false;
   t->exit_status = -1;
 #endif
+  /* Project 3 */
+  list_init(&t->spt);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

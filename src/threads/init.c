@@ -20,6 +20,7 @@
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+#include "vm/frame.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
@@ -87,6 +88,7 @@ main (void)
   palloc_init ();
   malloc_init ();
   paging_init ();
+  falloc_init ();
 
   /* Segmentation. */
 #ifdef USERPROG

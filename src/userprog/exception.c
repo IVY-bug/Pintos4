@@ -5,6 +5,12 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
+#include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -148,19 +154,47 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+  
+  if(fault_addr < PHYS_BASE)
+  {
+    struct thread *curr = thread_current();
 
-#ifdef USERPROG
-    user_exit(-1);
-#endif
+    if(fault_addr >= f->esp - 0x20)
+    {
+      //This condition means stack access
+      void *upage = pg_round_down(fault_addr);
+      uint8_t *kpage = falloc_get_frame(PAL_USER | PAL_ZERO);
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+      if(pagedir_get_page (curr->pagedir, upage) == NULL
+            && pagedir_set_page (curr->pagedir, upage, kpage, true))
+      {
+        spage_insert(curr, upage, kpage, true);
+        return;
+      }
+    }
+
+  #ifdef USERPROG
+      user_exit(-1);
+  #endif
+
+  }
+  else
+  {
+
+  #ifdef USERPROG
+      user_exit(-1);
+  #endif
+
+    /* To implement virtual memory, delete the rest of the function
+    body, and replace it with code that brings in the page to
+    which fault_addr refers. */
+    printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+    kill (f);
+  }
+
 }
 

@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
+#include "vm/page.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -113,6 +114,9 @@ struct thread
     struct list file_list;              // for write, read, etc.
     struct file *deny;                  // for rox
     int exit_status;                    // for exit
+
+    /* Project 3 */
+    struct list spt;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
