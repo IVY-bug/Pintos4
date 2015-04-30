@@ -20,6 +20,7 @@
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp, char *tokens[]);
@@ -170,6 +171,12 @@ process_exit (void)
     file_allow_write(curr->deny);
     curr->deny = NULL;
   }
+  /*
+  if (!list_empty(&curr->spt))
+  {
+    spage_clear(curr);
+  }
+  */
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = curr->pagedir;

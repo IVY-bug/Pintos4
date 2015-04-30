@@ -165,6 +165,11 @@ page_fault (struct intr_frame *f)
       void *upage = pg_round_down(fault_addr);
       uint8_t *kpage = falloc_get_frame(PAL_USER | PAL_ZERO);
 
+      if(kpage == NULL) //full frame, we need victim page to evict
+      {
+
+      }
+
       if(pagedir_get_page (curr->pagedir, upage) == NULL
             && pagedir_set_page (curr->pagedir, upage, kpage, true))
       {
@@ -172,29 +177,32 @@ page_fault (struct intr_frame *f)
         return;
       }
     }
-
-  #ifdef USERPROG
-      user_exit(-1);
-  #endif
+    else if(not_present)
+    {
+      //This condition is for swapping
+      struct spage_entry *spe;
+      spe = lookup_spage(curr, pg_round_down(fault_addr));
+      if(spe != NULL)
+      {
+          
+      }
+    }
 
   }
-  else
-  {
 
-  #ifdef USERPROG
-      user_exit(-1);
-  #endif
+#ifdef USERPROG
+    user_exit(-1);
+#endif
 
-    /* To implement virtual memory, delete the rest of the function
-    body, and replace it with code that brings in the page to
-    which fault_addr refers. */
-    printf ("Page fault at %p: %s error %s page in %s context.\n",
-            fault_addr,
-            not_present ? "not present" : "rights violation",
-            write ? "writing" : "reading",
-            user ? "user" : "kernel");
-    kill (f);
-  }
+  /* To implement virtual memory, delete the rest of the function
+  body, and replace it with code that brings in the page to
+  which fault_addr refers. */
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+  kill (f);
 
 }
 
