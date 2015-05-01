@@ -4,17 +4,9 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 
-struct spage_entry
-{
-	void *uaddr;
-	void *kaddr;
-	bool writable;
-	bool swapped;
-	struct list_elem elem;
-};
 
 struct spage_entry *
-lookup_spage(struct thread *t, const void * vaddr)
+lookup_spage_by_uaddr(struct thread *t, const void * vaddr)
 {
 	struct list_elem *e;
 	for (e = list_begin(&t->spt);
@@ -30,6 +22,23 @@ lookup_spage(struct thread *t, const void * vaddr)
 	return NULL;
 }
 
+struct spage_entry *
+lookup_spage_by_kaddr(struct thread *t, const void * vaddr)
+{
+	struct list_elem *e;
+	for (e = list_begin(&t->spt);
+		e != list_end(&t->spt); e = list_next(e))
+	{
+		struct spage_entry *temp;
+		temp = list_entry(e, struct spage_entry, elem);
+		if(temp->kaddr == vaddr)
+		{
+			return temp;
+		}
+	}
+	return NULL;
+}
+
 void
 spage_insert(struct thread *t, void *upage, void *kpage, bool writable)
 {
@@ -38,7 +47,7 @@ spage_insert(struct thread *t, void *upage, void *kpage, bool writable)
 	spe->uaddr = upage;
 	spe->kaddr = kpage;
 	spe->writable = writable;
-	spe->swapped = false;
+	spe->indisk = false;
 	list_push_back(&t->spt, &spe->elem);
 }
 

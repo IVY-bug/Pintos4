@@ -1,4 +1,5 @@
 #include "vm/frame.h"
+#include "vm/page.h"
 #include "lib/kernel/list.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
@@ -6,14 +7,6 @@
 #include "threads/vaddr.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
-
-struct frame_entry
-{
-	uintptr_t frame; // kernel virtual address of Frame
-	void *page;
-	struct thread *t;
-	struct list_elem elem;
-};
 
 struct list_elem *cursor;
 struct list frame_table;
@@ -30,24 +23,24 @@ falloc_init (void)
 void *
 falloc_get_frame (enum palloc_flags flags)
 {
-	void *vaddr = palloc_get_page(flags);
-	if(vaddr == NULL) //need swapping
+	void *kaddr = palloc_get_page(flags);
+	if(kaddr == NULL) //need swapping
 	{
 		return NULL;
 	}
 
-	uintptr_t paddr = vtop(vaddr);
+	uintptr_t paddr = vtop(kaddr);
 
 	lock_acquire(&frame_lock);
 	struct frame_entry *e = 
 	(struct frame_entry *) malloc(sizeof(struct frame_entry));
 	e->frame = paddr;
-	e->page = vaddr;
+	e->kpage = kaddr;
 	e->t = thread_current();
 	list_push_back(&frame_table, &e->elem);
 	lock_release(&frame_lock);
 
-	return vaddr;
+	return kaddr;
 }
 
 void
@@ -82,10 +75,10 @@ find_victim(void)
 	{
 		struct frame_entry *temp = list_entry(cursor, struct frame_entry, elem);
 		
-		if(pagedir_is_accessed(temp->t->pagedir, &temp->frame))
+		if(pagedir_is_accessed(temp->t->pagedir, temp->kpage))
 		{
-			pagedir_set_accessed(temp->t->pagedir, &temp->frame, false);
-			pagedir_set_accessed(temp->t->pagedir, temp->page, false);
+			pagedir_set_accessed(temp->t->pagedir, lookup_spage_by_kaddr(temp->t, temp->kpage)->uaddr, false);
+			pagedir_set_accessed(temp->t->pagedir, temp->kpage, false);
 		}
 		else
 		{

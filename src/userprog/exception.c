@@ -167,7 +167,21 @@ page_fault (struct intr_frame *f)
 
       if(kpage == NULL) //full frame, we need victim page to evict
       {
+        struct frame_entry *victim_frame_entry;
+        struct spage_entry *victim_spage_entry;
+        void *victim_kpage;
+        void *victim_upage;
+        victim_frame_entry = find_victim();
+        victim_kpage = victim_frame_entry->kpage;
+        victim_spage_entry = lookup_spage_by_kaddr(victim_frame_entry->t, victim_kpage);
+        victim_upage = victim_spage_entry->uaddr;
+        /*
+        sec_no = find_emptyslot();
+        swap_out(victim_kpage, sec_no);
 
+
+        falloc_free_frame(victim_kpage);
+        kpage = falloc_get_frame(PAL_USER | PAL_ZERO);*/
       }
 
       if(pagedir_get_page (curr->pagedir, upage) == NULL
@@ -181,10 +195,10 @@ page_fault (struct intr_frame *f)
     {
       //This condition is for swapping
       struct spage_entry *spe;
-      spe = lookup_spage(curr, pg_round_down(fault_addr));
+      spe = lookup_spage_by_uaddr(curr, pg_round_down(fault_addr));
       if(spe != NULL)
       {
-          
+
       }
     }
 
