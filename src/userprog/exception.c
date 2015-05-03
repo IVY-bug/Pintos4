@@ -10,6 +10,7 @@
 #include "threads/vaddr.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "vm/swap.h"
 
 
 /* Number of page faults processed. */
@@ -126,6 +127,7 @@ kill (struct intr_frame *f)
    can find more information about both of these in the
    description of "Interrupt 14--Page Fault Exception (#PF)" in
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
+
 static void
 page_fault (struct intr_frame *f) 
 {
@@ -133,13 +135,12 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
      that caused the fault (that's f->eip).
-     See [IA32-v2a] "MOV--Move to/from Control Registers" and
-     [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
+     See [IA32-v2a] "MOV—Move to/from Control Registers" and
+     [IA32-v3a] 5.15 "Interrupt 14—Page Fault Exception
      (#PF)". */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
@@ -154,54 +155,46 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  
+
   if(fault_addr < PHYS_BASE)
   {
     struct thread *curr = thread_current();
 
+    if(not_present)
+    {
+      struct spage_entry *p = spage_find(curr, pg_round_down(fault_addr));
+      if(p!= NULL && p->indisk)
+      {
+        uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+        if(kpage == NULL)
+          kpage = swap();
+
+        swap_in(p->sec_no, kpage);
+        falloc_set_frame(kpage, p);
+        pagedir_set_page(curr->pagedir,p->uaddr,kpage,p->writable);
+        
+        p->kaddr = kpage;
+        p->indisk = false;
+        return;
+      }
+    }
     if(fault_addr >= f->esp - 0x20)
     {
       //This condition means stack access
       void *upage = pg_round_down(fault_addr);
-      uint8_t *kpage = falloc_get_frame(PAL_USER | PAL_ZERO);
-
+      uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
       if(kpage == NULL) //full frame, we need victim page to evict
-      {
-        struct frame_entry *victim_frame_entry;
-        struct spage_entry *victim_spage_entry;
-        void *victim_kpage;
-        void *victim_upage;
-        victim_frame_entry = find_victim();
-        victim_kpage = victim_frame_entry->kpage;
-        victim_spage_entry = lookup_spage_by_kaddr(victim_frame_entry->t, victim_kpage);
-        victim_upage = victim_spage_entry->uaddr;
-        /*
-        sec_no = find_emptyslot();
-        swap_out(victim_kpage, sec_no);
-
-
-        falloc_free_frame(victim_kpage);
-        kpage = falloc_get_frame(PAL_USER | PAL_ZERO);*/
-      }
+        kpage = swap();
 
       if(pagedir_get_page (curr->pagedir, upage) == NULL
             && pagedir_set_page (curr->pagedir, upage, kpage, true))
       {
-        spage_insert(curr, upage, kpage, true);
+        struct spage_entry* spe = spage_insert(curr, upage, kpage, true); 
+        falloc_set_frame(kpage, spe);
         return;
       }
     }
-    else if(not_present)
-    {
-      //This condition is for swapping
-      struct spage_entry *spe;
-      spe = lookup_spage_by_uaddr(curr, pg_round_down(fault_addr));
-      if(spe != NULL)
-      {
-
-      }
-    }
-
+    
   }
 
 #ifdef USERPROG
@@ -215,8 +208,6 @@ page_fault (struct intr_frame *f)
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
-          user ? "user" : "kernel");
+         user ? "user" : "kernel");
   kill (f);
-
 }
-

@@ -13,10 +13,11 @@ struct spage_entry
 	struct list_elem elem;
 };
 
-struct spage_entry * lookup_spage_by_kaddr(struct thread *, const void *);
-struct spage_entry * lookup_spage_by_uaddr(struct thread *, const void *);
-void spage_insert(struct thread *, void *, void *, bool);
+/*struct spage_entry * lookup_spage_by_kaddr(struct thread *, const void *);
+struct spage_entry * lookup_spage_by_uaddr(struct thread *, const void *);*/
+struct spage_entry* spage_insert(struct thread *, void *, void *, bool);
 void spage_clear(struct thread *);
-void spage_remove(struct thread *, void*);
+void spage_remove(struct thread *, void *);
+struct spage_entry* spage_find(struct thread*, void *);
 
 #endif

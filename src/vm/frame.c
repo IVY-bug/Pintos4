@@ -10,75 +10,58 @@
 
 struct list_elem *cursor;
 struct list frame_table;
-struct lock frame_lock;
 
-void
+void 
 falloc_init (void)
 {
-	lock_init(&frame_lock);
 	list_init(&frame_table);
-	cursor = list_begin(&frame_table);
-}
-
-void *
-falloc_get_frame (enum palloc_flags flags)
-{
-	void *kaddr = palloc_get_page(flags);
-	if(kaddr == NULL) //need swapping
-	{
-		return NULL;
-	}
-
-	uintptr_t paddr = vtop(kaddr);
-
-	lock_acquire(&frame_lock);
-	struct frame_entry *e = 
-	(struct frame_entry *) malloc(sizeof(struct frame_entry));
-	e->frame = paddr;
-	e->kpage = kaddr;
-	e->t = thread_current();
-	list_push_back(&frame_table, &e->elem);
-	lock_release(&frame_lock);
-
-	return kaddr;
 }
 
 void
-falloc_free_frame (void *page_addr)
+falloc_set_frame (void *kaddr, struct spage_entry* spe)
+{
+	struct frame_entry *e = 
+	(struct frame_entry *) malloc(sizeof(struct frame_entry));
+	e->frame = kaddr;
+	e->spe = spe;
+	e->t = thread_current();
+
+	list_push_back(&frame_table, &e->elem);
+}
+
+void
+falloc_free_frame (void *kaddr)
 {
 	struct list_elem *e;
-	struct frame_entry *f = NULL;
-
+	
 	for (e = list_begin(&frame_table);
 		e != list_end(&frame_table); e = list_next(e))
     {
-    	f = list_entry(e, struct frame_entry, elem);
-       	if(f->frame == vtop(page_addr))
+    	struct frame_entry *f  = list_entry(e, struct frame_entry, elem);
+    	if(f->frame == kaddr)
        	{
-       		palloc_free_page(page_addr);
-
-       		lock_acquire(&frame_lock);
        		list_remove(e);
-       		lock_release(&frame_lock);
+       		free(f);
        		break;
        	}
     }
-    free(f);
 }
 
 struct frame_entry *
 find_victim(void)
 {
-	struct frame_entry *victim;
-
+	cursor = list_begin(&frame_table);
+	struct frame_entry *victim = NULL;
+	
 	while(true)
 	{
 		struct frame_entry *temp = list_entry(cursor, struct frame_entry, elem);
-		
-		if(pagedir_is_accessed(temp->t->pagedir, temp->kpage))
+
+		if(pagedir_is_accessed(temp->t->pagedir, temp->frame))
+			//pagedir_is_accessed(temp->t->pagedir, temp->spe->uaddr))
 		{
-			pagedir_set_accessed(temp->t->pagedir, lookup_spage_by_kaddr(temp->t, temp->kpage)->uaddr, false);
-			pagedir_set_accessed(temp->t->pagedir, temp->kpage, false);
+			pagedir_set_accessed(temp->t->pagedir, temp->frame, false);
+			//pagedir_set_accessed(temp->t->pagedir, temp->spe->uaddr, false);
 		}
 		else
 		{
@@ -86,13 +69,12 @@ find_victim(void)
 			cursor = list_next(cursor);
 			if(cursor == list_end(&frame_table))
 				cursor = list_begin(&frame_table);
-			break;
+			return victim;
 		}
 
 		cursor = list_next(cursor);
 		if(cursor == list_end(&frame_table))
 			cursor = list_begin(&frame_table);
 	}
-
 	return victim;
 }

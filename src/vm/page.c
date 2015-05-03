@@ -4,42 +4,7 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 
-
 struct spage_entry *
-lookup_spage_by_uaddr(struct thread *t, const void * vaddr)
-{
-	struct list_elem *e;
-	for (e = list_begin(&t->spt);
-		e != list_end(&t->spt); e = list_next(e))
-	{
-		struct spage_entry *temp;
-		temp = list_entry(e, struct spage_entry, elem);
-		if(temp->uaddr == vaddr)
-		{
-			return temp;
-		}
-	}
-	return NULL;
-}
-
-struct spage_entry *
-lookup_spage_by_kaddr(struct thread *t, const void * vaddr)
-{
-	struct list_elem *e;
-	for (e = list_begin(&t->spt);
-		e != list_end(&t->spt); e = list_next(e))
-	{
-		struct spage_entry *temp;
-		temp = list_entry(e, struct spage_entry, elem);
-		if(temp->kaddr == vaddr)
-		{
-			return temp;
-		}
-	}
-	return NULL;
-}
-
-void
 spage_insert(struct thread *t, void *upage, void *kpage, bool writable)
 {
 	struct spage_entry *spe =
@@ -49,6 +14,7 @@ spage_insert(struct thread *t, void *upage, void *kpage, bool writable)
 	spe->writable = writable;
 	spe->indisk = false;
 	list_push_back(&t->spt, &spe->elem);
+	return spe;
 }
 
 void
@@ -62,6 +28,21 @@ spage_clear(struct thread *t)
 		free(e);
 	}
 }
+
+struct spage_entry* spage_find(struct thread* t, void *uaddr)
+{
+	struct list_elem *e;
+	for (e = list_begin(&t->spt);
+		e != list_end(&t->spt); e = list_next(e))
+	{
+		struct spage_entry *temp;
+		temp = list_entry(e, struct spage_entry, elem);
+		if(temp->uaddr == uaddr)
+			return temp;
+	}
+	return NULL;
+}
+
 
 void
 spage_remove(struct thread *t, void *uaddr)

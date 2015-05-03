@@ -5,6 +5,7 @@
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"
+#include "vm/frame.h"
 
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
@@ -40,8 +41,11 @@ pagedir_destroy (uint32_t *pd)
         uint32_t *pte;
         
         for (pte = pt; pte < pt + PGSIZE / sizeof *pte; pte++)
-          if (*pte & PTE_P) 
+          if (*pte & PTE_P)
+          {
             palloc_free_page (pte_get_page (*pte));
+            falloc_free_frame (pte_get_page (*pte));
+          }
         palloc_free_page (pt);
       }
   palloc_free_page (pd);
@@ -62,7 +66,6 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
 
   /* Shouldn't create new kernel virtual mappings. */
   ASSERT (!create || is_user_vaddr (vaddr));
-
   /* Check for a page table for VADDR.
      If one is missing, create one if requested. */
   pde = pd + pd_no (vaddr);
@@ -79,7 +82,6 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
       else
         return NULL;
     }
-
   /* Return the page table entry. */
   pt = pde_get_pt (*pde);
   return &pt[pt_no (vaddr)];
