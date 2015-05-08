@@ -11,6 +11,7 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 #include "vm/swap.h"
+#include "lib/string.h"
 
 
 /* Number of page faults processed. */
@@ -163,7 +164,7 @@ page_fault (struct intr_frame *f)
     if(not_present)
     {
       struct spage_entry *p = spage_find(curr, pg_round_down(fault_addr));
-      if(p!= NULL && p->indisk)
+      if(p != NULL && p->indisk)
       {
         uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
         if(kpage == NULL)
@@ -171,10 +172,28 @@ page_fault (struct intr_frame *f)
 
         swap_in(p->sec_no, kpage);
         falloc_set_frame(kpage, p);
-        pagedir_set_page(curr->pagedir,p->uaddr,kpage,p->writable);
-        
-        p->kaddr = kpage;
+        pagedir_set_page(curr->pagedir, p->uaddr, kpage, p->writable);
         p->indisk = false;
+        return;
+      }
+      else if(p != NULL && !p->load)
+      {
+        uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+        if(kpage == NULL)
+          kpage = swap();
+
+        if(p->read_bytes > 0)
+        {
+          if(file_read_at(p->f, kpage, p->read_bytes, p->offset) != (int) p->read_bytes)
+          {
+            palloc_free_page(kpage);
+            kill(f);
+          }
+          memset(kpage + p->read_bytes, 0, p->zero_bytes);
+        }
+        falloc_set_frame(kpage, p);
+        pagedir_set_page(curr->pagedir, p->uaddr, kpage, p->writable);
+        p->load = true;
         return;
       }
     }
@@ -183,13 +202,13 @@ page_fault (struct intr_frame *f)
       //This condition means stack access
       void *upage = pg_round_down(fault_addr);
       uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-      if(kpage == NULL) //full frame, we need victim page to evict
+      if(kpage == NULL)
         kpage = swap();
 
       if(pagedir_get_page (curr->pagedir, upage) == NULL
             && pagedir_set_page (curr->pagedir, upage, kpage, true))
       {
-        struct spage_entry* spe = spage_insert(curr, upage, kpage, true); 
+        struct spage_entry* spe = spage_insert(curr, upage, NULL, 0, 0, 0, true, true); 
         falloc_set_frame(kpage, spe);
         return;
       }

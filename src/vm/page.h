@@ -2,20 +2,24 @@
 #define VM_PAGE_H
 #include "lib/kernel/list.h"
 #include "threads/thread.h"
+#include "filesys/file.h"
 
 struct spage_entry
 {
 	void *uaddr;
-	void *kaddr;
+	struct file *f;
+	off_t offset;
+	uint32_t read_bytes;
+	uint32_t zero_bytes;
 	bool writable;
 	bool indisk;
+	bool load;
 	uint32_t sec_no;
 	struct list_elem elem;
 };
 
-/*struct spage_entry * lookup_spage_by_kaddr(struct thread *, const void *);
-struct spage_entry * lookup_spage_by_uaddr(struct thread *, const void *);*/
-struct spage_entry* spage_insert(struct thread *, void *, void *, bool);
+struct spage_entry* spage_insert(struct thread *, void *, struct file *,
+	off_t ofs, uint32_t read_bytes, uint32_t zero_bytes, bool writable, bool load);
 void spage_clear(struct thread *);
 void spage_remove(struct thread *, void *);
 struct spage_entry* spage_find(struct thread*, void *);

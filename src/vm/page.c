@@ -5,14 +5,18 @@
 #include "threads/synch.h"
 
 struct spage_entry *
-spage_insert(struct thread *t, void *upage, void *kpage, bool writable)
+spage_insert(struct thread *t, void *upage, struct file *f, off_t ofs, uint32_t read_bytes, uint32_t zero_bytes, bool writable, bool load)
 {
 	struct spage_entry *spe =
 	(struct spage_entry *) malloc(sizeof(struct spage_entry));
 	spe->uaddr = upage;
-	spe->kaddr = kpage;
+	spe->f = f;
+	spe->offset = ofs;
+	spe->read_bytes = read_bytes;
+	spe->zero_bytes = zero_bytes;
 	spe->writable = writable;
 	spe->indisk = false;
+	spe->load = load;
 	list_push_back(&t->spt, &spe->elem);
 	return spe;
 }

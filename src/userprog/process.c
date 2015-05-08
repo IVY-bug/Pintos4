@@ -454,7 +454,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-  
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -464,32 +463,39 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
       /* Get a page of memory. */
+      //printf("%d\n", page_read_bytes);
+      //printf("%d\n", page_zero_bytes);
+    /*
       uint8_t *kpage = palloc_get_page (PAL_USER|PAL_ZERO);
+     
       if (kpage == NULL)
-      {
         kpage = swap();
-      }
       
-      /* Load this page. */
+      // Load this page. 
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
+        //  printf("@@@@@@@@@@@ LODAD_SEGMENT FAIL @@@@@@@@@@@@\n");
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
+      // Add the page to the process's address space.
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
+         //  printf("@@@@@@@@@@@ LODAD_SEGMENT FAIL @@@@@@@@@@@@\n");
           return false; 
         }
-      struct spage_entry *spe = spage_insert(thread_current(), upage, kpage, writable); 
+      struct spage_entry* spe = spage_insert(thread_current(), upage, writable); 
       falloc_set_frame(kpage, spe);
+      */
+      spage_insert(thread_current(), upage, file, ofs, page_read_bytes, page_zero_bytes, writable, false);
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      ofs += PGSIZE;
     }
   return true;
 }
@@ -512,7 +518,7 @@ setup_stack (void **esp, char *tokens[])
   success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
   if (success)
   {
-        struct spage_entry *spe = spage_insert(thread_current(), ((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+        struct spage_entry *spe = spage_insert(thread_current(), ((uint8_t *) PHYS_BASE) - PGSIZE, NULL, 0, 0, 0, true, true);
         falloc_set_frame(kpage, spe);
         *esp = PHYS_BASE;
 

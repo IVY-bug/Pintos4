@@ -117,6 +117,7 @@ struct thread
 
     /* Project 3 */
     struct list spt;
+    struct list mmap;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

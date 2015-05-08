@@ -514,6 +514,7 @@ init_thread (struct thread *t, const char *name, int priority)
 #endif
   /* Project 3 */
   list_init(&t->spt);
+  list_init(&t->mmap);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

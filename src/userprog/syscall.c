@@ -11,6 +11,7 @@
 #include "threads/vaddr.h"
 #include "devices/input.h"
 #include "threads/malloc.h"
+#include "userprog/pagedir.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -21,6 +22,15 @@ struct file_elem
     int fd;
     struct file *file;
     struct list_elem elem;
+};
+
+struct mmap_elem
+{
+	mapid_t map_des;
+	struct file *file;
+	void *start_addr;
+	void *end_addr;
+	struct list_elem elem;
 };
 
 static struct file *
@@ -57,13 +67,22 @@ user_exit(int status)
 	struct thread *curr = thread_current();
 	struct list_elem *e;
 	struct file_elem *pfile_elem;
+	struct mmap_elem *m;
 	
+	for(e = list_begin(&curr->mmap);
+    	e != list_end(&curr->mmap); e = list_begin(&curr->mmap))
+	{
+		m = list_entry(e, struct mmap_elem, elem);
+	    user_munmap(m->map_des);
+	}
+
 	for(e = list_begin(&curr->file_list);
     	e != list_end(&curr->file_list); e = list_begin(&curr->file_list))
 	{
 		pfile_elem = list_entry(e, struct file_elem, elem);
 	    user_close(pfile_elem->fd);
-	}
+	}	
+
 	printf("%s: exit(%d)\n", curr->name, status); 
 	
  	curr->exit_status = status; //for waiting parent
@@ -284,13 +303,67 @@ user_close(int fd)
 	}
 }
 
+mapid_t
+user_mmap (int fd, void *addr)
+{
+	struct thread *curr = thread_current();
+
+	if(fd < 3 || (uintptr_t)addr & 0xfff ||
+		(uintptr_t)addr == 0 || user_filesize(fd) == 0 ||
+		pagedir_get_page(curr->pagedir, addr) != NULL ||
+		spage_find(curr, addr) != NULL)
+		return -1;
+	else
+	{
+		mapid_t new_des;
+		struct file *f = fd_to_file(fd);
+
+		if(f == NULL)
+			return -1;
+
+		if(list_empty(&curr->mmap))
+			new_des = 0;
+		else
+			new_des = list_entry(list_end(&curr->mmap), struct mmap_elem, elem)->map_des + 1;
+		
+		struct mmap_elem *m = (struct mmap_elem *) malloc(sizeof(struct mmap_elem));
+		m->map_des = new_des;
+		m->file = f;
+		m->start_addr = addr;
+		m->end_addr = addr + user_filesize(fd);
+		list_push_back(&curr->mmap, &m->elem);
+		return new_des;
+	}
+
+}
+
+void
+user_munmap (mapid_t mapping)
+{
+	struct list_elem *e;
+    struct mmap_elem *m;
+    struct thread *curr = thread_current();
+    
+    for(e = list_begin(&curr->mmap);
+    	e != list_end(&curr->mmap); e = list_next(e))
+    {
+		m = list_entry(e, struct mmap_elem, elem);
+
+		if(m->map_des == mapping)
+		{
+			//file_close(pfile_elem->file); // core part to implement.
+			list_remove(&m->elem);
+			free(m);
+			break;	    	
+		}
+	}
+
+}
 
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-	//printf ("system call!\n");
   	uint32_t syscall_number = *(uintptr_t *)(f->esp);
-  	//printf("syscall_number:%d\n", syscall_number);
 
   	if((uintptr_t)(f->esp + 4) >= 0xc0000000 || f->esp == NULL)
 		user_exit(-1);
@@ -356,7 +429,15 @@ syscall_handler (struct intr_frame *f UNUSED)
   			user_close(*(uintptr_t *)(f->esp + 4));
   		break;
 
+  		case SYS_MMAP :
+  			f->eax = user_mmap(*(uintptr_t *)(f->esp + 4),
+  							   *(char **)(f->esp + 8));
+  		break;
+
+  		case SYS_MUNMAP:
+  			user_munmap(*(int *)(f->esp + 4));
+  		break;
+
 	    default : break;
   	}
-  	//thread_exit ();
 }

@@ -37,7 +37,7 @@ falloc_free_frame (void *kaddr)
 	for (e = list_begin(&frame_table);
 		e != list_end(&frame_table); e = list_next(e))
     {
-    	struct frame_entry *f  = list_entry(e, struct frame_entry, elem);
+    	struct frame_entry *f = list_entry(e, struct frame_entry, elem);
     	if(f->frame == kaddr)
        	{
        		list_remove(e);
@@ -58,10 +58,9 @@ find_victim(void)
 		struct frame_entry *temp = list_entry(cursor, struct frame_entry, elem);
 
 		if(pagedir_is_accessed(temp->t->pagedir, temp->frame))
-			//pagedir_is_accessed(temp->t->pagedir, temp->spe->uaddr))
 		{
 			pagedir_set_accessed(temp->t->pagedir, temp->frame, false);
-			//pagedir_set_accessed(temp->t->pagedir, temp->spe->uaddr, false);
+			pagedir_set_accessed(temp->t->pagedir, temp->spe->uaddr, false);
 		}
 		else
 		{
