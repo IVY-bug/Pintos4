@@ -188,6 +188,7 @@ page_fault (struct intr_frame *f)
           {
             palloc_free_page(kpage);
             kill(f);
+            return;
           }
           memset(kpage + p->read_bytes, 0, p->zero_bytes);
         }
@@ -197,6 +198,7 @@ page_fault (struct intr_frame *f)
         return;
       }
     }
+
     if(fault_addr >= f->esp - 0x20)
     {
       //This condition means stack access
@@ -208,7 +210,7 @@ page_fault (struct intr_frame *f)
       if(pagedir_get_page (curr->pagedir, upage) == NULL
             && pagedir_set_page (curr->pagedir, upage, kpage, true))
       {
-        struct spage_entry* spe = spage_insert(curr, upage, NULL, 0, 0, 0, true, true); 
+        struct spage_entry* spe = spage_insert(curr, upage, NULL, 0, 0, 0, true, true, -1); 
         falloc_set_frame(kpage, spe);
         return;
       }

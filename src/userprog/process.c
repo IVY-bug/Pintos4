@@ -490,7 +490,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       struct spage_entry* spe = spage_insert(thread_current(), upage, writable); 
       falloc_set_frame(kpage, spe);
       */
-      spage_insert(thread_current(), upage, file, ofs, page_read_bytes, page_zero_bytes, writable, false);
+      spage_insert(thread_current(), upage, file, ofs, page_read_bytes, page_zero_bytes, writable, false, -1);
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -518,7 +518,7 @@ setup_stack (void **esp, char *tokens[])
   success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
   if (success)
   {
-        struct spage_entry *spe = spage_insert(thread_current(), ((uint8_t *) PHYS_BASE) - PGSIZE, NULL, 0, 0, 0, true, true);
+        struct spage_entry *spe = spage_insert(thread_current(), ((uint8_t *) PHYS_BASE) - PGSIZE, NULL, 0, 0, 0, true, true, -1);
         falloc_set_frame(kpage, spe);
         *esp = PHYS_BASE;
 

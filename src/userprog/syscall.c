@@ -27,7 +27,7 @@ struct file_elem
 struct mmap_elem
 {
 	mapid_t map_des;
-	struct file *file;
+	int fd;
 	void *start_addr;
 	void *end_addr;
 	struct list_elem elem;
@@ -111,7 +111,6 @@ user_exec(const char *file)
 			enum intr_level old_level = intr_disable();
 			thread_block();
 			intr_set_level(old_level);
-			//k->load_parent = NULL;
 		}
 		if(k->load_success)
 		{
@@ -295,7 +294,7 @@ user_close(int fd)
 
 		if(pfile_elem->fd == fd)
 		{
-			file_close(pfile_elem->file);
+			//file_close(pfile_elem->file);
 			list_remove(&pfile_elem->elem);
 			free(pfile_elem);
 			break;	    	
@@ -307,6 +306,9 @@ mapid_t
 user_mmap (int fd, void *addr)
 {
 	struct thread *curr = thread_current();
+	int file_length;
+	int ofs = 0;
+	uint8_t *upage = addr;
 
 	if(fd < 3 || (uintptr_t)addr & 0xfff ||
 		(uintptr_t)addr == 0 || user_filesize(fd) == 0 ||
@@ -321,14 +323,26 @@ user_mmap (int fd, void *addr)
 		if(f == NULL)
 			return -1;
 
+		file_length = user_filesize(fd);
+
 		if(list_empty(&curr->mmap))
 			new_des = 0;
 		else
 			new_des = list_entry(list_end(&curr->mmap), struct mmap_elem, elem)->map_des + 1;
 		
+		while(file_length > 0)
+		{
+			size_t page_read_bytes = file_length < PGSIZE ? file_length : PGSIZE;
+			size_t page_zero_bytes = PGSIZE - page_read_bytes;
+			spage_insert(curr, upage, f, ofs, page_read_bytes, page_zero_bytes, true, false, new_des);
+			file_length -= page_read_bytes;
+			upage += PGSIZE;
+			ofs += PGSIZE;
+		}
+
 		struct mmap_elem *m = (struct mmap_elem *) malloc(sizeof(struct mmap_elem));
 		m->map_des = new_des;
-		m->file = f;
+		m->fd = fd;
 		m->start_addr = addr;
 		m->end_addr = addr + user_filesize(fd);
 		list_push_back(&curr->mmap, &m->elem);
@@ -348,13 +362,29 @@ user_munmap (mapid_t mapping)
     	e != list_end(&curr->mmap); e = list_next(e))
     {
 		m = list_entry(e, struct mmap_elem, elem);
+		struct file *f = fd_to_file(m->fd);
+		int file_length = user_filesize(m->fd);
+		uint8_t *addr = m->start_addr;
+		int ofs = 0;
 
 		if(m->map_des == mapping)
 		{
-			//file_close(pfile_elem->file); // core part to implement.
-			list_remove(&m->elem);
+			while(file_length > 0)
+			{
+				size_t page_write_bytes = file_length < PGSIZE ? file_length : PGSIZE;
+				struct spage_entry *temp = spage_find(curr, addr);
+				if(pagedir_is_dirty(curr->pagedir, addr))
+				{
+					file_write_at(f, temp->uaddr, page_write_bytes, ofs);
+				}
+				spage_remove(curr, addr);
+				file_length -= page_write_bytes;
+				addr += PGSIZE;
+				ofs += page_write_bytes;
+			}
+			list_remove(e);
 			free(m);
-			break;	    	
+			break;	
 		}
 	}
 
