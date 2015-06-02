@@ -22,12 +22,12 @@ void swap_init(void)
 	swap_disk = disk_get(1,1);
 	swap_bitmap = bitmap_create(disk_size(swap_disk)/SECTOR_PER_PAGE);
 	
-	bitmap_set_all(swap_bitmap,0);
+	bitmap_set_all(swap_bitmap, 0);
 }
 
 uint32_t swap_out(void *frame)
 {
-	uint32_t index = bitmap_scan_and_flip(swap_bitmap,0,1,0);
+	uint32_t index = bitmap_scan_and_flip(swap_bitmap, 0, 1, 0);
 
 	int i;
 	for(i=0;i<SECTOR_PER_PAGE;i++)
@@ -44,7 +44,6 @@ void swap_in(uint32_t index, void *frame)
 		disk_read(swap_disk, (index * SECTOR_PER_PAGE) + i, frame + (i * DISK_SECTOR_SIZE));
 
 }
-
 
 void *
 swap (void)

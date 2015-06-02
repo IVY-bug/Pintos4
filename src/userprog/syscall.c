@@ -186,7 +186,6 @@ user_open(const char *file)
 int
 user_filesize(int fd)
 {
-	
 	struct file *f = fd_to_file(fd);
 	if(f == NULL)
 	{

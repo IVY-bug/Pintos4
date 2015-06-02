@@ -332,7 +332,7 @@ thread_exit (void)
     thread_yield();
   }
 #endif
-
+  
   /* Just set our status to dying and schedule another process.
      We will be destroyed during the call to schedule_tail(). */
   intr_disable ();
@@ -566,10 +566,10 @@ schedule_tail (struct thread *prev)
   struct thread *curr = running_thread ();
   
   ASSERT (intr_get_level () == INTR_OFF);
-
+  
   /* Mark us as running. */
   curr->status = THREAD_RUNNING;
-
+  
   /* Start new time slice. */
   thread_ticks = 0;
 
