@@ -29,7 +29,7 @@ file_open (struct inode *inode)
     {
       inode_close (inode);
       free (file);
-      return NULL; 
+      return NULL;
     }
 }
 

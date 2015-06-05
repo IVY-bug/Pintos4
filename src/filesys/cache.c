@@ -2,6 +2,7 @@
 #include "filesys/filesys.h"
 #include "filesys/cache.h"
 #include "lib/string.h"
+#include "lib/stdio.h"
 
 int cursor;
 
@@ -41,14 +42,30 @@ cache_victim(void)
 			return i;
 	}
 	
-	int ret = cursor;
-	if(cache[cursor].dirty)
-		disk_write(filesys_disk, cache[cursor].sec_no, cache[cursor].data);
-	if(cursor == 63)
-		cursor = -1;
-	cursor = cursor + 1;
+	int victim = -1;
+	while(true)
+	{
+		if(cache[cursor].accessed)
+			cache[cursor].accessed = false;
+		else
+		{
+			victim = cursor;
+			if(cursor == 63)
+				cursor = -1;
+			cursor = cursor + 1;
+			break;
+		}
+		if(cursor == 63)
+			cursor = -1;
+		cursor = cursor + 1;
+	}
 
-	return ret;
+	//write behind
+	if(cache[victim].dirty)
+		disk_write(filesys_disk, cache[victim].sec_no, cache[victim].data);
+	cache[victim].dirty = false;
+
+	return victim;
 }
 
 void
@@ -59,10 +76,20 @@ cache_read(int sec_no, void *buffer, off_t size, off_t offset)
 	{
 		s = cache_victim();
 		disk_read(filesys_disk, sec_no, cache[s].data);
+		cache[s].sec_no = sec_no;
 	}
 	memcpy(buffer, cache[s].data + offset, size);
-	cache[s].sec_no = sec_no;
 	cache[s].accessed = true;
+
+	//read ahead
+	int t = cache_lookup(sec_no + 1);
+	if(t == -1)
+	{
+		t = cache_victim();
+		disk_read(filesys_disk, sec_no + 1, cache[t].data);
+		cache[t].sec_no = sec_no + 1;
+	}
+	cache[t].accessed = true;
 }
 
 void
@@ -73,11 +100,12 @@ cache_write(int sec_no, const void *buffer, off_t size, off_t offset)
 	{
 		s = cache_victim();
 		disk_read(filesys_disk, sec_no, cache[s].data);
+		cache[s].sec_no = sec_no;
 	}
 	memcpy(cache[s].data + offset, buffer, size);
-	cache[s].sec_no = sec_no;
 	cache[s].accessed = true;
 	cache[s].dirty = true;
+
 }
 
 void

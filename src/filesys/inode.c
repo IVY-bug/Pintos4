@@ -15,10 +15,13 @@
    Must be exactly DISK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-    disk_sector_t start;                /* First data sector. */
+    //disk_sector_t start;                /* First data sector. */
     off_t length;                       /* File size in bytes. */
+    disk_sector_t direct[124];
+    disk_sector_t indirect;
+    disk_sector_t doubly_indirect;
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
+    //uint32_t unused[125];               /* Not used. */
   };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -44,6 +47,7 @@ struct inode
    INODE.
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
+/*
 static disk_sector_t
 byte_to_sector (const struct inode *inode, off_t pos) 
 {
@@ -53,6 +57,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
   else
     return -1;
 }
+*/
 
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
@@ -63,6 +68,36 @@ void
 inode_init (void) 
 {
   list_init (&open_inodes);
+}
+
+static bool
+allocate_sectors(struct inode_disk *disk_inode, int sectors)
+{
+  if(sectors == 0)
+    return true;
+
+  /* direct */
+  int i;
+  static char zeros[DISK_SECTOR_SIZE];
+
+  for(i = 0; i < 124; i++)
+  {
+    if(sectors == 0)
+      break;
+
+    if(free_map_allocate(1, &disk_inode->direct[i]))
+      cache_write(disk_inode->direct[i], zeros, 512, 0);
+    else
+      return false;
+    sectors--;
+  }
+  return true;
+}
+
+static void
+deallocate_sectors(struct inode_disk *disk_inode)
+{
+
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -88,21 +123,25 @@ inode_create (disk_sector_t sector, off_t length)
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
+      /*
       if (free_map_allocate (sectors, &disk_inode->start))
         {
-          //disk_write (filesys_disk, sector, disk_inode);
-          cache_write(sector, disk_inode, 512, 0);
+          disk_write (filesys_disk, sector, disk_inode);
           if (sectors > 0) 
             {
               static char zeros[DISK_SECTOR_SIZE];
               size_t i;
               
               for (i = 0; i < sectors; i++) 
-                cache_write(disk_inode->start + i, zeros, 512, 0);
-                //disk_write (filesys_disk, disk_inode->start + i, zeros); 
+                disk_write (filesys_disk, disk_inode->start + i, zeros); 
             }
           success = true; 
-        } 
+        }*/
+      if(allocate_sector(disk_inode, sectors))
+      {
+        cache_write(sector, disk_inode, 512, 0);
+        success = true;
+      }
       free (disk_inode);
     }
   return success;
@@ -251,7 +290,6 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       bytes_read += chunk_size;
     }
   //free (bounce);
-
   return bytes_read;
 }
 
@@ -297,7 +335,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         }
       else 
         {
-          /*
+          
            //We need a bounce buffer. 
           if (bounce == NULL) 
             {
@@ -315,6 +353,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
             memset (bounce, 0, DISK_SECTOR_SIZE);
           memcpy (bounce + sector_ofs, buffer + bytes_written, chunk_size);
           disk_write (filesys_disk, sector_idx, bounce); 
+          
+          if(!(sector_ofs > 0 || chunk_size < sector_left))
+            cache_write(sector_idx, 0, 512, 0);
+          cache_write(sector_idx, buffer + bytes_written, chunk_size, sector_ofs);
         }*/
         
       /* Advance. */
