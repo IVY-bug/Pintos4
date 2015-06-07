@@ -8,6 +8,7 @@
 #include "filesys/directory.h"
 #include "devices/disk.h"
 #include "filesys/cache.h"
+#include "threads/malloc.h"
 
 /* The disk that contains the file system. */
 struct disk *filesys_disk;
@@ -50,14 +51,22 @@ bool
 filesys_create (const char *name, off_t initial_size) 
 {
   disk_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
+  //struct dir *dir = dir_open_root ();
+  char *path = (char *) malloc(strlen(name)+1);
+  strlcpy(path, name, strlen(name)+1);
+
+  struct dir *dir = dir_open_path(path, true);
+  char *file_name = dir_get_filename(path);
+
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
-                  && dir_add (dir, name, inode_sector));
+                  && inode_create (inode_sector, initial_size, false)
+                  && dir_add (dir, file_name, inode_sector));
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
   dir_close (dir);
+
+  free(path);
 
   return success;
 }
@@ -70,14 +79,33 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
-  struct dir *dir = dir_open_root ();
+  //struct dir *dir = dir_open_root ();
+  char *path = (char *) malloc(strlen(name)+1);
+  strlcpy(path, name, strlen(name)+1);
+
+  struct dir *dir = dir_open_path(path, true);
   struct inode *inode = NULL;
+  char *file_name = dir_get_filename(path);
 
-  if (dir != NULL)
-    dir_lookup (dir, name, &inode);
-  dir_close (dir);
+  if(file_name == NULL)
+  {
+    free(path);
+    return NULL;
+  }
+  else if(file_name == '\0')
+  {
+    free(path);
+    return file_open(dir_get_inode(dir));
+  }
+  else
+  {
+    if (dir != NULL)
+      dir_lookup (dir, file_name, &inode);
+    dir_close (dir);
 
-  return file_open (inode);
+    free(path);
+    return file_open (inode);
+  }
 }
 
 /* Deletes the file named NAME.
@@ -87,9 +115,19 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name) 
 {
-  struct dir *dir = dir_open_root ();
-  bool success = dir != NULL && dir_remove (dir, name);
+  //struct dir *dir = dir_open_root ();
+
+  if(!strcmp(name, "/"))
+    return false;
+
+  char *path = (char *) malloc(strlen(name)+1);
+  strlcpy(path, name, strlen(name)+1);
+
+  struct dir *dir = dir_open_path(path, true);
+  char *file_name = dir_get_filename(path);
+  bool success = dir != NULL && dir_remove (dir, file_name);
   dir_close (dir); 
+  free(path);
 
   return success;
 }

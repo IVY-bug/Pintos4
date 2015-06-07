@@ -5,6 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 
 /* A directory. */
 struct dir 
@@ -26,7 +27,7 @@ struct dir_entry
 bool
 dir_create (disk_sector_t sector, size_t entry_cnt) 
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), true);
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -47,6 +48,93 @@ dir_open (struct inode *inode)
       free (dir);
       return NULL; 
     }
+}
+
+char *
+dir_get_filename(char *name)
+{
+  char *s = name;
+  char *token, *save_ptr;
+
+  char *file_name = NULL;
+
+  for (token = strtok_r(s, "/", &save_ptr); token != NULL;
+       token = strtok_r(NULL, "/", &save_ptr))
+  {
+      file_name = token;
+  }
+  return file_name;
+}
+
+struct dir *
+dir_open_path(const char *dir_path, bool before_filename)
+{
+  char *path = (char *) malloc(strlen(dir_path)+1);
+  strlcpy(path, dir_path, strlen(dir_path)+1);
+
+  char *path2 = (char *) malloc(strlen(dir_path)+1);
+  strlcpy(path2, dir_path, strlen(dir_path)+1);
+
+  struct dir *currd, *temp;
+  struct inode *inode;
+
+  if(path[0] != '/')
+  {
+    if(thread_current()->cwd)
+      currd = dir_reopen(thread_current()->cwd);
+    else
+      currd = dir_open_root();
+  }
+  else
+  {
+    path++;
+    currd = dir_open_root();
+  }
+
+  if(path2[0] == '/')
+    path2++;
+
+  char *s2 = path2;
+  char *token2, *save_ptr2;
+  int index = 0;
+
+  for (token2 = strtok_r(s2, "/", &save_ptr2); token2 != NULL;
+       token2 = strtok_r(NULL, "/", &save_ptr2))
+  {
+    index++;
+  }
+  //free(path2);
+  //printf("%d\n", index);
+
+  char *s = path;
+  char *token, *save_ptr;
+
+  for (token = strtok_r(s, "/", &save_ptr); token != NULL;
+       token = strtok_r(NULL, "/", &save_ptr))
+  {
+    if((index-1 == 0) && before_filename)
+      break;
+
+    if(!dir_lookup(currd, token, &inode))
+    {
+
+      dir_close(currd);
+      free(path);
+      return NULL;
+    }
+    else
+    {
+      temp = dir_open(inode);
+      dir_close(currd);
+      currd = temp;
+    }
+
+    index--;
+  }
+  
+  //free(path);
+  return currd;
+
 }
 
 /* Opens the root directory and returns a directory for it.
@@ -146,7 +234,7 @@ dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector)
   bool success = false;
   
   ASSERT (dir != NULL);
-  ASSERT (name != NULL);
+  //ASSERT (name != NULL);
 
   /* Check NAME for validity. */
   if (*name == '\0' || strlen (name) > NAME_MAX)
@@ -201,6 +289,27 @@ dir_remove (struct dir *dir, const char *name)
   if (inode == NULL)
     goto done;
 
+  if(inode_isdir(inode))
+  {
+    struct dir *subdir = dir_open(inode);
+    struct dir_entry e;
+    off_t ofs;
+    bool empty;
+
+    for (ofs = sizeof e; inode_read_at(subdir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e)
+      if(e.in_use)
+        empty = false;
+    empty = true;
+
+    if(!empty)
+    {
+      dir_close(subdir);
+      goto done;
+    }
+    dir_close(subdir);
+
+  }
+  
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) 

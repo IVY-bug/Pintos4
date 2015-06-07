@@ -69,7 +69,7 @@ cache_victim(void)
 }
 
 void
-cache_read(int sec_no, void *buffer, off_t size, off_t offset)
+cache_read(int sec_no, void *buffer, int size, int offset)
 {
 	int s = cache_lookup(sec_no);
 	if(s == -1)
@@ -93,7 +93,7 @@ cache_read(int sec_no, void *buffer, off_t size, off_t offset)
 }
 
 void
-cache_write(int sec_no, const void *buffer, off_t size, off_t offset)
+cache_write(int sec_no, const void *buffer, int size, int offset)
 {
 	int s = cache_lookup(sec_no);
 	if(s == -1)

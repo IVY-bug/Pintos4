@@ -17,8 +17,8 @@ struct cache_elem cache[64];
 void cache_init(void);
 int cache_lookup(int);
 int cache_victim(void);
-void cache_read(int, void *, off_t, off_t);
-void cache_write(int, const void *, off_t, off_t);
+void cache_read(int, void *, int, int);
+void cache_write(int, const void *, int, int);
 void cache_done(void);
 
 #endif

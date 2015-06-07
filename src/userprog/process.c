@@ -167,6 +167,8 @@ process_exit (void)
   struct thread *curr = thread_current ();
   uint32_t *pd;
   
+  dir_close(curr->cwd);
+
   if(curr->deny != NULL)
   {
     file_allow_write(curr->deny);
@@ -375,6 +377,9 @@ load (const char *file_name, void (**eip) (void), void **esp, char *tokens[])
           break;
         }
     }
+
+  t->cwd = dir_open_root();
+  
   /* Set up stack. */
   if (!setup_stack (esp, tokens))
     goto done;

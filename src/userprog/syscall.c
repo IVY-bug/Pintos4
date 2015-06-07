@@ -12,6 +12,10 @@
 #include "devices/input.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "filesys/directory.h"
+#include "lib/string.h"
+#include "filesys/free-map.h"
+#include "filesys/inode.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -21,6 +25,7 @@ struct file_elem
 {
     int fd;
     struct file *file;
+    struct dir *dir;
     struct list_elem elem;
 };
 
@@ -45,8 +50,26 @@ fd_to_file(int fd)
     {
 		pfile_elem = list_entry(e, struct file_elem, elem);
 
-		if(pfile_elem->fd == fd)
+		if(pfile_elem->fd == fd && !pfile_elem->dir)
 	    	return pfile_elem->file;
+	}
+	return NULL;
+}
+
+static struct dir *
+fd_to_dir(int fd)
+{
+	struct list_elem *e;
+    struct file_elem *pfile_elem;
+    struct thread *curr = thread_current();
+    
+    for(e = list_begin(&curr->file_list);
+    	e != list_end(&curr->file_list); e = list_next(e))
+    {
+		pfile_elem = list_entry(e, struct file_elem, elem);
+
+		if(pfile_elem->fd == fd && pfile_elem->dir)
+	    	return pfile_elem->dir;
 	}
 	return NULL;
 }
@@ -161,9 +184,9 @@ int
 user_open(const char *file)
 {
 	
-	if(file == NULL)
+	if(file == NULL || !pagedir_get_page(thread_current()->pagedir, file))
 	{
-		return -1;;
+		user_exit(-1);
 	}
 	else
 	{
@@ -178,6 +201,10 @@ user_open(const char *file)
 		}
 		pfile_elem->file = pfile;
 		pfile_elem->fd = file_des++;
+		if(inode_isdir(file_get_inode(pfile)))
+			pfile_elem->dir = dir_open(file_get_inode(pfile));
+		else
+			pfile_elem->dir = NULL;
 		list_push_back(&thread_current()->file_list, &pfile_elem->elem);
 		
 		return pfile_elem->fd;
@@ -227,7 +254,8 @@ user_read(int fd, void *buffer, unsigned size)
 int
 user_write (int fd, const void *buffer, unsigned size)
 {
-	
+	if(!pagedir_get_page(thread_current()->pagedir, buffer) || buffer == NULL)
+		user_exit(-1);
 	if(size<= 0)
 	{
 		return 0;
@@ -294,6 +322,8 @@ user_close(int fd)
 		if(pfile_elem->fd == fd)
 		{
 			//file_close(pfile_elem->file);
+			if(pfile_elem->dir != NULL)
+				dir_close(pfile_elem->dir);
 			list_remove(&pfile_elem->elem);
 			free(pfile_elem);
 			break;	    	
@@ -389,6 +419,73 @@ user_munmap (mapid_t mapping)
 
 }
 
+bool
+user_chdir (const char *dir)
+{
+	struct dir *ret_dir = dir_open_path(dir, false);
+	if(ret_dir == NULL)
+		return false;
+	dir_close(thread_current()->cwd);
+	thread_current()->cwd = ret_dir;
+	return true;
+}
+
+bool
+user_mkdir (const char *dir)
+{
+	struct inode *inode;
+ 	disk_sector_t sectorp;
+
+ 	char *name = (char *) malloc(strlen(dir)+1);
+  	strlcpy(name, dir, strlen(dir)+1);
+
+ 	struct dir *cur_dir = dir_open_path(dir, true);
+    char *dir_name = dir_get_filename(name);
+
+     if(dir_name == NULL)
+ 		return false;
+
+ 	bool success = (cur_dir != NULL
+    				&& !dir_lookup(cur_dir, dir_name, &inode)
+                	&& free_map_allocate(1, &sectorp)
+                	&& dir_create(sectorp, 14)
+                	&& dir_add(cur_dir, dir_name, sectorp));
+  
+ 	if(cur_dir == NULL)
+ 		dir_close(cur_dir);
+ 	if(!success)
+ 		free_map_release(sectorp, 1);
+ 	return success;
+}
+
+bool
+user_readdir (int fd, char name[READDIR_MAX_LEN + 1])
+{
+	struct dir *d = fd_to_dir(fd);
+	if(d == NULL)
+		return false;
+	return dir_readdir(d, name);
+}
+
+bool
+user_isdir (int fd)
+{
+	struct file *f = fd_to_file(fd);
+	if(f == NULL)
+		return false;
+	return inode_isdir(file_get_inode(f));
+}
+
+int
+user_inumber (int fd)
+{
+	struct file *f = fd_to_file(fd);
+	if(f == NULL)
+		return -1;
+	return inode_sector(file_get_inode(f));
+
+}
+
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
@@ -425,7 +522,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   			f->eax = user_remove(*(const char **)(f->esp + 4));
   		break;
 
-		case SYS_OPEN : 
+		case SYS_OPEN :
+			//if(pagedir_get_page((uint32_t *)thread_current()->pagedir, (f->esp + 4)) != NULL)
+			//	user_exit(-1);
   			f->eax = user_open(*(const char **)(f->esp + 4));
   		break;
 	
@@ -447,7 +546,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 
 	    case SYS_SEEK : 
   			user_seek(*(uintptr_t *)(f->esp + 4),
-  						*(unsigned *)(f->esp + 8)) ;
+  						*(unsigned *)(f->esp + 8));
   		break;
 
 		case SYS_TELL : 
@@ -465,6 +564,27 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   		case SYS_MUNMAP:
   			user_munmap(*(int *)(f->esp + 4));
+  		break;
+
+  		case SYS_CHDIR:              
+    		f->eax = user_chdir(*(const char **)(f->esp + 4));
+    	break;
+
+    	case SYS_MKDIR:                
+    		f->eax = user_mkdir(*(const char **)(f->esp + 4));
+    	break;
+
+    	case SYS_READDIR:            
+    		f->eax = user_readdir(*(uintptr_t *)(f->esp + 4),
+    								*(char **)(f->esp + 8));
+    	break;
+
+    	case SYS_ISDIR:                
+    		f->eax = user_isdir(*(uintptr_t *)(f->esp + 4));
+    	break;
+
+    	case SYS_INUMBER:              
+  			f->eax = user_inumber(*(uintptr_t *)(f->esp + 4));
   		break;
 
 	    default : break;

@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/synch.h"
 #include "vm/page.h"
+#include "filesys/directory.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -118,6 +119,9 @@ struct thread
     /* Project 3 */
     struct list spt;
     struct list mmap;
+
+    /* Proejct 4 */
+    struct dir *cwd;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
