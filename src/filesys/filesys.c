@@ -9,6 +9,7 @@
 #include "devices/disk.h"
 #include "filesys/cache.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
 
 /* The disk that contains the file system. */
 struct disk *filesys_disk;
@@ -62,6 +63,7 @@ filesys_create (const char *name, off_t initial_size)
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, false)
                   && dir_add (dir, file_name, inode_sector));
+
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
   dir_close (dir);
@@ -87,14 +89,8 @@ filesys_open (const char *name)
   struct inode *inode = NULL;
   char *file_name = dir_get_filename(path);
 
-  if(file_name == NULL)
+  if(file_name == '\0') //??
   {
-    free(path);
-    return NULL;
-  }
-  else if(file_name == '\0')
-  {
-    free(path);
     return file_open(dir_get_inode(dir));
   }
   else
@@ -106,6 +102,10 @@ filesys_open (const char *name)
     free(path);
     return file_open (inode);
   }
+
+  //if(inode == NULL)
+    //return NULL;
+
 }
 
 /* Deletes the file named NAME.
@@ -127,6 +127,7 @@ filesys_remove (const char *name)
   char *file_name = dir_get_filename(path);
   bool success = dir != NULL && dir_remove (dir, file_name);
   dir_close (dir); 
+  
   free(path);
 
   return success;

@@ -69,7 +69,9 @@ fd_to_dir(int fd)
 		pfile_elem = list_entry(e, struct file_elem, elem);
 
 		if(pfile_elem->fd == fd && pfile_elem->dir)
+		{
 	    	return pfile_elem->dir;
+		}
 	}
 	return NULL;
 }
@@ -115,7 +117,7 @@ user_exit(int status)
 pid_t
 user_exec(const char *file)
 {
-	if(file == NULL)
+	if(file == NULL || !strcmp(file, ""))
 	{
 		return -1;
 	}
@@ -155,10 +157,12 @@ user_wait(pid_t pid)
 bool
 user_create(const char *file, unsigned size)
 {
-	
-	if(file == NULL)
-	{
+	if(!pagedir_get_page(thread_current()->pagedir, file) || file == NULL)
 		user_exit(-1);
+
+	if(!strcmp(file, ""))
+	{
+		return false;
 	}
 	else
 	{
@@ -169,8 +173,10 @@ user_create(const char *file, unsigned size)
 bool
 user_remove(const char *file)
 {
+	if(!pagedir_get_page(thread_current()->pagedir, file) || file == NULL)
+		user_exit(-1);
 	
-	if(file == NULL)
+	if(!strcmp(file, ""))
 	{
 		return false;
 	}
@@ -183,10 +189,14 @@ user_remove(const char *file)
 int
 user_open(const char *file)
 {
-	
-	if(file == NULL || !pagedir_get_page(thread_current()->pagedir, file))
+	if(!pagedir_get_page(thread_current()->pagedir, file))
 	{
 		user_exit(-1);
+	}
+
+	else if(!strcmp(file, ""))
+	{
+		return -1;
 	}
 	else
 	{
@@ -225,7 +235,6 @@ user_filesize(int fd)
 int
 user_read(int fd, void *buffer, unsigned size)
 {
-
 	if (fd == 0)
 	{
 		unsigned i;
@@ -256,6 +265,7 @@ user_write (int fd, const void *buffer, unsigned size)
 {
 	if(!pagedir_get_page(thread_current()->pagedir, buffer) || buffer == NULL)
 		user_exit(-1);
+
 	if(size<= 0)
 	{
 		return 0;
@@ -422,6 +432,9 @@ user_munmap (mapid_t mapping)
 bool
 user_chdir (const char *dir)
 {
+	if(!pagedir_get_page(thread_current()->pagedir, dir) || dir == NULL)
+		user_exit(-1);
+
 	struct dir *ret_dir = dir_open_path(dir, false);
 	if(ret_dir == NULL)
 		return false;
@@ -433,6 +446,12 @@ user_chdir (const char *dir)
 bool
 user_mkdir (const char *dir)
 {
+	if(!pagedir_get_page(thread_current()->pagedir, dir) || dir == NULL)
+		user_exit(-1);
+
+     if(!strcmp(dir, ""))
+ 		return false;
+
 	struct inode *inode;
  	disk_sector_t sectorp;
 
@@ -441,9 +460,6 @@ user_mkdir (const char *dir)
 
  	struct dir *cur_dir = dir_open_path(dir, true);
     char *dir_name = dir_get_filename(name);
-
-     if(dir_name == NULL)
- 		return false;
 
  	bool success = (cur_dir != NULL
     				&& !dir_lookup(cur_dir, dir_name, &inode)
@@ -455,12 +471,17 @@ user_mkdir (const char *dir)
  		dir_close(cur_dir);
  	if(!success)
  		free_map_release(sectorp, 1);
+
+ 	free(name);
  	return success;
 }
 
 bool
 user_readdir (int fd, char name[READDIR_MAX_LEN + 1])
 {
+	if(!pagedir_get_page(thread_current()->pagedir, name) || name == NULL)
+		user_exit(-1);
+
 	struct dir *d = fd_to_dir(fd);
 	if(d == NULL)
 		return false;
@@ -471,19 +492,44 @@ bool
 user_isdir (int fd)
 {
 	struct file *f = fd_to_file(fd);
+	struct dir *d = NULL;
+	bool isdir = false;
+
 	if(f == NULL)
-		return false;
-	return inode_isdir(file_get_inode(f));
+	{
+		d = fd_to_dir(fd);
+		if(d == NULL)
+			return false;
+		else
+			isdir = true;
+	}
+
+	if(isdir)
+		return inode_isdir(dir_get_inode(d));
+	else
+		return inode_isdir(file_get_inode(f));
 }
 
 int
 user_inumber (int fd)
 {
 	struct file *f = fd_to_file(fd);
-	if(f == NULL)
-		return -1;
-	return inode_sector(file_get_inode(f));
+	struct dir *d = NULL;
+	bool isdir = false;
 
+	if(f == NULL)
+	{
+		d = fd_to_dir(fd);
+		if(d == NULL)
+			return -1;
+		else
+			isdir = true;
+	}
+
+	if(isdir)
+		return inode_sector(dir_get_inode(d));
+	else
+		return inode_sector(file_get_inode(f));
 }
 
 static void
@@ -523,8 +569,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   		break;
 
 		case SYS_OPEN :
-			//if(pagedir_get_page((uint32_t *)thread_current()->pagedir, (f->esp + 4)) != NULL)
-			//	user_exit(-1);
   			f->eax = user_open(*(const char **)(f->esp + 4));
   		break;
 	

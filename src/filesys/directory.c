@@ -211,7 +211,14 @@ dir_lookup (const struct dir *dir, const char *name,
 
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
-
+/*
+  if(!strcmp(name, "."))
+    *inode = inode_reopen (dir->inode);
+  else if(!strcmp (name, ".."))
+  {
+    inode_read_at(dir->inode, &e, sizeof e, 0);
+    *inode = inode_open(e.inode_sector);
+  }*/
   if (lookup (dir, name, &e, NULL))
     *inode = inode_open (e.inode_sector);
   else
@@ -292,11 +299,12 @@ dir_remove (struct dir *dir, const char *name)
   if(inode_isdir(inode))
   {
     struct dir *subdir = dir_open(inode);
+
     struct dir_entry e;
     off_t ofs;
     bool empty;
 
-    for (ofs = sizeof e; inode_read_at(subdir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e)
+    for (ofs = 0; inode_read_at(subdir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e)
       if(e.in_use)
         empty = false;
     empty = true;
