@@ -60,6 +60,12 @@ inode_isdir(struct inode *inode)
 {
   return inode->data.isdir;
 }
+int
+inode_opencnt(struct inode *inode)
+{
+  return inode->open_cnt;
+}
+
 /* allocate_sectors
 inode와 sectors를 받아서
 어떤 한 파일이 sectors개수만큼 disk에서 할당받도록 해준다
@@ -70,26 +76,21 @@ inode와 sectors를 받아서
 */
 static bool
 allocate_sectors(struct inode_disk *disk_inode, int sector , int cnt)
-{
- // printf("@@@@@@@@@@@@ allocate_sectors start inode_length : %d sector : %d, cnt : %d @@@@@@@@@@@\n",disk_inode->length,sector,cnt);
- 
+{ 
   /* doubly indirect */
   int i, j;
   static char zeros[512];
   if(sector == 0) return true;
   struct sector_table *doubly_indirect_table;
   doubly_indirect_table = calloc(1, sizeof(struct sector_table));
-  //printf("wwwww\n");
+
   if(cnt == 0)
   {
-    //printf("@@@@@@@@@ make doubly_indrect_table @@@@@@@\n");
     if(!free_map_allocate(1, &disk_inode->doubly_indirect))
     {
-      //printf("kakakakakkakakakakakakkakakakakak\n\n");
       return false;
     }
   }
-  //printf("@@@@@@@@ doubly_indirect_table sector : %d @@@@@@@@@@@\n",disk_inode->doubly_indirect);
   cache_read(disk_inode->doubly_indirect, doubly_indirect_table, 512, 0);
     
   for(i = 0; i < 128 && sector > 0; i++)
@@ -98,11 +99,9 @@ allocate_sectors(struct inode_disk *disk_inode, int sector , int cnt)
 
     if(cnt == 0)
     {
-      //printf("@@@@@@@ make indirect_table @@@@@@@@\n");
       if(!free_map_allocate(1, &doubly_indirect_table->table[i]))
         return false;
     }
-    //printf("@@@@@@@@ indirect_table sector : %d @@@@@@@@@@@\n",doubly_indirect_table->table[i]);
   
     cache_read(doubly_indirect_table->table[i], indirect_table, 512, 0);
     
@@ -112,7 +111,6 @@ allocate_sectors(struct inode_disk *disk_inode, int sector , int cnt)
       {
         if(free_map_allocate(1, &indirect_table->table[j]))
         {
-          //printf("@@@@@@@ add new sector to sector : %d  !!!!!@@@@@@@@@\n",indirect_table->table[j]);
           cache_write(indirect_table->table[j], zeros, 512, 0);
         }
         else
@@ -133,7 +131,6 @@ allocate_sectors(struct inode_disk *disk_inode, int sector , int cnt)
   }
   cache_write(disk_inode->doubly_indirect, doubly_indirect_table, 512, 0);
   free(doubly_indirect_table);
-  //printf("@@@@@@@@@@@@ allocate_sectors finish @@@@@@@@@@@\n");
   return true;
 }
 
@@ -164,7 +161,7 @@ deallocate_sectors(struct inode_disk *data)
     free(indirect_table);
 
   }
-  free_map_release(data->doubly_indirect, 1);
+  //free_map_release(data->doubly_indirect, 1);
   free(doubly_indirect_table);
 }
 

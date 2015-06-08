@@ -190,9 +190,7 @@ int
 user_open(const char *file)
 {
 	if(!pagedir_get_page(thread_current()->pagedir, file))
-	{
 		user_exit(-1);
-	}
 
 	else if(!strcmp(file, ""))
 	{
@@ -432,9 +430,6 @@ user_munmap (mapid_t mapping)
 bool
 user_chdir (const char *dir)
 {
-	if(!pagedir_get_page(thread_current()->pagedir, dir) || dir == NULL)
-		user_exit(-1);
-
 	struct dir *ret_dir = dir_open_path(dir, false);
 	if(ret_dir == NULL)
 		return false;
@@ -453,6 +448,8 @@ user_mkdir (const char *dir)
  		return false;
 
 	struct inode *inode;
+	struct inode *inode2;
+	struct dir *dir2 = NULL;
  	disk_sector_t sectorp;
 
  	char *name = (char *) malloc(strlen(dir)+1);
@@ -467,6 +464,25 @@ user_mkdir (const char *dir)
                 	&& dir_create(sectorp, 14)
                 	&& dir_add(cur_dir, dir_name, sectorp));
   
+  	if(success)
+  	{
+  		inode2 = inode_open(sectorp);
+		dir2 = dir_open(inode2);
+		if(!dir_add(dir2, ".", sectorp))
+		{
+			dir_remove(cur_dir, dir_name);
+			return false;
+		}
+		if(!dir_add(dir2, "..", inode_sector(dir_get_inode(cur_dir))))
+		{
+			dir_remove(dir2, ".");
+			dir_remove(cur_dir, dir_name);
+			return false;
+		}
+		inode_close(inode2);
+		dir_close(dir2);
+	}
+
  	if(cur_dir == NULL)
  		dir_close(cur_dir);
  	if(!success)
@@ -479,9 +495,6 @@ user_mkdir (const char *dir)
 bool
 user_readdir (int fd, char name[READDIR_MAX_LEN + 1])
 {
-	if(!pagedir_get_page(thread_current()->pagedir, name) || name == NULL)
-		user_exit(-1);
-
 	struct dir *d = fd_to_dir(fd);
 	if(d == NULL)
 		return false;

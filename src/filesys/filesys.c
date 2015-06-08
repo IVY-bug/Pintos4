@@ -102,10 +102,6 @@ filesys_open (const char *name)
     free(path);
     return file_open (inode);
   }
-
-  //if(inode == NULL)
-    //return NULL;
-
 }
 
 /* Deletes the file named NAME.
@@ -120,14 +116,14 @@ filesys_remove (const char *name)
   if(!strcmp(name, "/"))
     return false;
 
-  char *path = (char *) malloc(strlen(name)+1);
-  strlcpy(path, name, strlen(name)+1);
+  char *path = (char *) malloc(strlen(name) + 1);
+  strlcpy(path, name, strlen(name) + 1);
 
   struct dir *dir = dir_open_path(path, true);
   char *file_name = dir_get_filename(path);
   bool success = dir != NULL && dir_remove (dir, file_name);
   dir_close (dir); 
-  
+
   free(path);
 
   return success;

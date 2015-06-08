@@ -69,11 +69,11 @@ dir_get_filename(char *name)
 struct dir *
 dir_open_path(const char *dir_path, bool before_filename)
 {
-  char *path = (char *) malloc(strlen(dir_path)+1);
-  strlcpy(path, dir_path, strlen(dir_path)+1);
+  char *path = (char *) malloc(strlen(dir_path) + 1);
+  strlcpy(path, dir_path, strlen(dir_path) + 1);
 
-  char *path2 = (char *) malloc(strlen(dir_path)+1);
-  strlcpy(path2, dir_path, strlen(dir_path)+1);
+  char *path2 = (char *) malloc(strlen(dir_path) + 1);
+  strlcpy(path2, dir_path, strlen(dir_path) + 1);
 
   struct dir *currd, *temp;
   struct inode *inode;
@@ -100,11 +100,7 @@ dir_open_path(const char *dir_path, bool before_filename)
 
   for (token2 = strtok_r(s2, "/", &save_ptr2); token2 != NULL;
        token2 = strtok_r(NULL, "/", &save_ptr2))
-  {
     index++;
-  }
-  //free(path2);
-  //printf("%d\n", index);
 
   char *s = path;
   char *token, *save_ptr;
@@ -114,12 +110,11 @@ dir_open_path(const char *dir_path, bool before_filename)
   {
     if((index-1 == 0) && before_filename)
       break;
-
     if(!dir_lookup(currd, token, &inode))
     {
 
       dir_close(currd);
-      free(path);
+      //free(path);
       return NULL;
     }
     else
@@ -131,8 +126,9 @@ dir_open_path(const char *dir_path, bool before_filename)
 
     index--;
   }
-  
+
   //free(path);
+  //free(path2);
   return currd;
 
 }
@@ -211,14 +207,14 @@ dir_lookup (const struct dir *dir, const char *name,
 
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
-/*
+
   if(!strcmp(name, "."))
     *inode = inode_reopen (dir->inode);
-  else if(!strcmp (name, ".."))
+  else if(!strcmp(name, ".."))
   {
     inode_read_at(dir->inode, &e, sizeof e, 0);
     *inode = inode_open(e.inode_sector);
-  }*/
+  }
   if (lookup (dir, name, &e, NULL))
     *inode = inode_open (e.inode_sector);
   else
@@ -299,23 +295,17 @@ dir_remove (struct dir *dir, const char *name)
   if(inode_isdir(inode))
   {
     struct dir *subdir = dir_open(inode);
+    char names[NAME_MAX + 1];
 
-    struct dir_entry e;
-    off_t ofs;
-    bool empty;
+    if(dir_readdir(subdir, names))
+      goto done;
 
-    for (ofs = 0; inode_read_at(subdir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e)
-      if(e.in_use)
-        empty = false;
-    empty = true;
-
-    if(!empty)
+    if(thread_current()->cwd->inode == inode)
     {
       dir_close(subdir);
       goto done;
     }
     dir_close(subdir);
-
   }
   
   /* Erase directory entry. */
@@ -345,8 +335,11 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
       dir->pos += sizeof e;
       if (e.in_use)
         {
-          strlcpy (name, e.name, NAME_MAX + 1);
-          return true;
+          if(strcmp(e.name, ".") && strcmp(e.name, ".."))
+          {
+            strlcpy (name, e.name, NAME_MAX + 1);
+            return true;
+          }
         } 
     }
   return false;
